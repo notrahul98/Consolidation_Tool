@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Validation{% endblock %}
+{% block content %}
+<h1>Validation</h1>
+<p class="subtitle">{{ validations | selectattr('passed') | list | length }}/{{ validations | length }} checks passed for {{ period_str }}.</p>
+
+<div class="card">
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Check</th><th>Description</th><th>Severity</th><th>Status</th><th>Details</th></tr></thead>
+    <tbody>
+      {% for v in validations %}
+      <tr>
+        <td class="num">{{ v.check_id }}</td>
+        <td>{{ v.description }}</td>
+        <td>{{ v.severity }}</td>
+        <td><span class="badge {{ 'badge-pass' if v.passed else 'badge-fail' }}">{{ 'Pass' if v.passed else 'Fail' }}</span></td>
+        <td>{% for d in v.details %}<div>{{ d }}</div>{% endfor %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

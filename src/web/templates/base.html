@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Tally Consolidation{% endblock %} — Tally Consolidation Tool</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/">Tally Consolidation Tool</a>
+      {% if period_str %}
+      <nav class="nav">
+        <a href="/?period={{ period_str }}">Dashboard</a>
+        <a href="/periods/{{ period_str }}/import">Import TB</a>
+        <a href="/periods/{{ period_str }}/mapping">Mapping</a>
+        <a href="/periods/{{ period_str }}/adjustments">Adjustments</a>
+        <a href="/periods/{{ period_str }}/consolidated">Consolidated TB</a>
+        <a href="/periods/{{ period_str }}/pl">P&amp;L</a>
+        <a href="/periods/{{ period_str }}/bs">BS</a>
+        <a href="/periods/{{ period_str }}/validation">Validation</a>
+        <a href="/periods/{{ period_str }}/audit">Audit Log</a>
+      </nav>
+      <span class="period-badge">{{ period_str }}{% if period_status %} &middot; {{ period_status }}{% endif %}</span>
+      {% endif %}
+    </div>
+  </header>
+  <main class="page">
+    {% if request.query_params.get('flash') %}
+      <div class="flash flash-{{ request.query_params.get('flash_kind', 'info') }}">{{ request.query_params.get('flash') }}</div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

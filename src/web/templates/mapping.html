@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Mapping{% endblock %}
+{% block content %}
+<h1>Ledger Mapping</h1>
+<p class="subtitle">Categorize each distinct ledger into a fixed P&amp;L/Balance Sheet category. Changing a category and saving re-applies it to every entity that carries that ledger name.</p>
+
+{% if not rows %}
+  <p class="empty">No ledgers found — import TBs for {{ period_str }} first.</p>
+{% else %}
+<form method="post" action="/periods/{{ period_str }}/mapping">
+  <div class="card">
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Ledger Name</th>
+          <th>Entities</th>
+          <th>Tally Primary Group</th>
+          <th class="num-col">Balance</th>
+          <th>Check</th>
+          <th style="min-width:260px">Category</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.ledger_name }}</td>
+          <td>{{ row.entities }}</td>
+          <td>{{ row.primary_group }}</td>
+          <td class="num {{ 'neg' if row.balance < 0 }}">{{ row.balance | idr }}</td>
+          <td>{% if row.check %}<span class="badge badge-warn">{{ row.check }}</span>{% endif %}</td>
+          <td>
+            <input type="hidden" name="ledger_name" value="{{ row.ledger_name }}">
+            <select name="category">
+              <option value="">— uncategorized —</option>
+              {% for c in categories %}
+              <option value="{{ c }}" {{ 'selected' if c == row.current_category }}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  <button class="btn" type="submit">Save categorization</button>
+</form>
+{% endif %}
+{% endblock %}

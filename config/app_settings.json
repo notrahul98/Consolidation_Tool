@@ -1,0 +1,10 @@
+{
+  "database_path": "data/consolidation.db",
+  "tolerance_idr": 1,
+  "entities": [
+    {"code": "BII", "name": "PT Bahan Indonesia Indah"},
+    {"code": "KDI", "name": "PT Klasik Distribusi Indonesia"},
+    {"code": "KNS", "name": "PT Kreasi Nusantara Sejati"},
+    {"code": "VKS", "name": "VKS Co (Batik & Non-Batik)"}
+  ]
+}

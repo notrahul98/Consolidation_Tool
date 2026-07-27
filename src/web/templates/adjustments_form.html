@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}New Adjustment{% endblock %}
+{% block content %}
+<h1>New Adjustment</h1>
+<p class="subtitle">A double-entry journal — debits must equal credits, at least 2 lines, narration required.</p>
+
+{% if errors %}
+<div class="flash flash-error">
+  {% for e in errors %}<div>{{ e }}</div>{% endfor %}
+</div>
+{% endif %}
+
+<form method="post" action="/periods/{{ period_str }}/adjustments/new">
+  <div class="card">
+    <div class="field-row">
+      <div class="field">
+        <label for="external_ref">Adjustment Ref</label>
+        <input type="text" id="external_ref" name="external_ref" required
+               value="{{ form.external_ref | default('') }}" placeholder="ADJ-{{ period_str }}-001">
+      </div>
+      <div class="field">
+        <label for="adjustment_type">Type</label>
+        <select id="adjustment_type" name="adjustment_type">
+          {% for t in types %}
+          <option value="{{ t }}" {{ 'selected' if t == form.adjustment_type|default('other') }}>{{ t }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="narration">Narration</label>
+      <textarea id="narration" name="narration" rows="2" required>{{ form.narration | default('') }}</textarea>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Lines</h2>
+    <div id="lines">
+      <div class="je-line">
+        <div><label>Entity</label></div>
+        <div><label>Category</label></div>
+        <div><label>Debit</label></div>
+        <div><label>Credit</label></div>
+        <div></div>
+      </div>
+      {% for _ in range(2) %}
+      <div class="je-line">
+        <div class="field">
+          <select name="entity_code">
+            <option value="">(group-level)</option>
+            {% for e in entities %}<option value="{{ e.entity_code }}">{{ e.entity_code }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <select name="category">
+            <option value=""></option>
+            {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field"><input type="number" step="0.01" name="debit"></div>
+        <div class="field"><input type="number" step="0.01" name="credit"></div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="this.closest('.je-line').remove()">&times;</button>
+      </div>
+      {% endfor %}
+    </div>
+    <button type="button" class="btn btn-secondary btn-sm" id="add-line">+ Add line</button>
+  </div>
+
+  <button class="btn" type="submit">Create as draft</button>
+</form>
+
+<template id="line-template">
+  <div class="je-line">
+    <div class="field">
+      <select name="entity_code">
+        <option value="">(group-level)</option>
+        {% for e in entities %}<option value="{{ e.entity_code }}">{{ e.entity_code }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <select name="category">
+        <option value=""></option>
+        {% for c in categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field"><input type="number" step="0.01" name="debit"></div>
+    <div class="field"><input type="number" step="0.01" name="credit"></div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="this.closest('.je-line').remove()">&times;</button>
+  </div>
+</template>
+<script>
+  document.getElementById('add-line').addEventListener('click', function () {
+    var tpl = document.getElementById('line-template');
+    var clone = tpl.content.cloneNode(true);
+    document.getElementById('lines').appendChild(clone);
+  });
+</script>
+{% endblock %}

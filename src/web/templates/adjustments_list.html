@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Adjustments{% endblock %}
+{% block content %}
+<h1>Adjustments</h1>
+<p class="subtitle">Structured journal entries replacing manual TB edits. Every entry must balance and carry a narration.</p>
+
+<div class="field-row" style="margin-bottom:20px">
+  <a class="btn" href="/periods/{{ period_str }}/adjustments/new">+ New adjustment</a>
+  <form method="post" action="/periods/{{ period_str }}/adjustments/apply-all" class="inline">
+    <button class="btn btn-secondary" type="submit">Apply all drafts</button>
+  </form>
+  {% if has_prior %}
+  <form method="post" action="/periods/{{ period_str }}/adjustments/copy-prior" class="inline">
+    <button class="btn btn-secondary" type="submit">Copy from prior period</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if not adjustments %}
+  <p class="empty">No adjustments yet for {{ period_str }}.</p>
+{% else %}
+  {% for adj in adjustments %}
+  <div class="card">
+    <div class="field-row" style="justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div>
+        <strong class="num">{{ adj.ref }}</strong>
+        <span class="badge badge-{{ 'applied' if adj.status == 'applied' else 'draft' }}">{{ adj.status }}</span>
+        <span class="subtitle" style="display:inline;margin-left:8px">{{ adj.type }}</span>
+      </div>
+      <form method="post" action="/periods/{{ period_str }}/adjustments/{{ adj.ref }}/delete"
+            onsubmit="return confirm('Delete {{ adj.ref }}?');" class="inline">
+        <button class="btn btn-danger btn-sm" type="submit" {{ 'disabled' if period_status == 'locked' }}>Delete</button>
+      </form>
+    </div>
+    <p style="margin:0 0 10px">{{ adj.narration }}</p>
+    <table>
+      <thead><tr><th>Entity</th><th>Category</th><th class="num-col">Debit</th><th class="num-col">Credit</th></tr></thead>
+      <tbody>
+        {% for l in adj.lines %}
+        <tr>
+          <td>{{ l.entity }}</td>
+          <td>{{ l.category }}</td>
+          <td class="num">{{ l.debit | idr }}</td>
+          <td class="num">{{ l.credit | idr }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Consolidated TB{% endblock %}
+{% block content %}
+<h1>Consolidated Trial Balance</h1>
+<p class="subtitle">Raw Dr-positive signed balances (matches Conso_TB_Matrix in the Excel pack), not statement-display sign.</p>
+
+<form method="post" action="/periods/{{ period_str }}/consolidated/recalculate" style="margin-bottom:16px">
+  <button class="btn" type="submit">Recalculate</button>
+</form>
+
+<div class="card">
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Code</th><th>Account</th>
+        {% for e in entities %}<th class="num-col">{{ e.entity_code }}</th>{% endfor %}
+        <th class="num-col">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr class="{{ 'section' if row.is_header }}">
+        <td class="num">{{ row.code }}</td>
+        <td>{{ row.name }}</td>
+        {% for v in row.entity_values %}<td class="num {{ 'neg' if v and v < 0 }}">{{ v | idr }}</td>{% endfor %}
+        <td class="num {{ 'neg' if row.total and row.total < 0 }}">{{ row.total | idr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
