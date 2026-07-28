@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Import TB{% endblock %}
+{% block content %}
+<h1>Import Trial Balance</h1>
+<p class="subtitle">Upload one entity's Tally TB Excel export for {{ period_str }}. Re-uploading an entity replaces its prior import for this period.</p>
+
+<div class="card" style="max-width:460px">
+  <form method="post" action="/periods/{{ period_str }}/import" enctype="multipart/form-data">
+    <div class="field">
+      <label for="entity_code">Entity</label>
+      <select id="entity_code" name="entity_code" required>
+        {% for e in entities %}
+        <option value="{{ e.entity_code }}">{{ e.entity_code }} — {{ e.entity_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field">
+      <label for="file">Tally TB Excel export</label>
+      <input type="file" id="file" name="file" accept=".xlsx" required>
+    </div>
+    <button class="btn" type="submit">Import</button>
+  </form>
+</div>
+{% endblock %}

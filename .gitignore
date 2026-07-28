@@ -1,0 +1,18 @@
+data/*.db-shm
+data/*.db-wal
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.claude/
+.venv/
+venv/
+
+# Input files (workbooks and trial balance source data)
+*.xlsx
+May TB/
+Consolidated Pack*/
+Adjustments.xlsx
+Mapping*.xlsx
+TB *.xlsx
+Kreasi Financials*.xlsx

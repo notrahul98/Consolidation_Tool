@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p class="subtitle">{{ period_str }}</p>
+
+<div class="card">
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Line Item</th>
+        <th class="num-col">Amount (IDR)</th>
+        {% if show_percent %}<th class="num-col">% of Net Sales</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+        {% if line.kind == 'section' %}
+        <tr class="section"><td colspan="{{ 3 if show_percent else 2 }}">{{ line.label }}</td></tr>
+        {% else %}
+        <tr class="{{ 'subtotal' if line.is_subtotal }}">
+          <td style="padding-left: {{ 14 + line.level * 24 }}px">{{ line.label }}</td>
+          <td class="num {{ 'neg' if line.value and line.value < 0 }}">{{ line.value | idr }}</td>
+          {% if show_percent %}<td class="num {{ 'neg' if line.percent and line.percent < 0 }}">{{ line.percent | pct }}</td>{% endif %}
+        </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

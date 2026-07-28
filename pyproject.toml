@@ -1,0 +1,15 @@
+[project]
+name = "tally-consolidation"
+version = "0.1.0"
+description = "Local-first Tally trial balance consolidation tool for a small finance team"
+requires-python = ">=3.11"
+dependencies = [
+    "openpyxl>=3.1",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "python-multipart>=0.0.9",
+    "jinja2>=3.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
