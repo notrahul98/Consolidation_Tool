@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tally Consolidation Tool</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#/">Tally Consolidation Tool</a>
+      <nav class="nav" id="nav-links">
+        <a href="#/">Dashboard</a>
+      </nav>
+      <span class="period-badge" id="period-badge" style="display:none"></span>
+      <div id="backup-controls"></div>
+    </div>
+  </header>
+  <main class="page">
+    <div id="boot-status" class="flash flash-info">Loading database engine…</div>
+    <div id="load-backup-panel"></div>
+    <div id="app"></div>
+  </main>
+
+  <script src="vendor/sql-wasm.js"></script>
+  <script src="vendor/exceljs.min.js"></script>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,982 @@
+[
+  {
+    "account_code": "PL001",
+    "account_name": "Sales",
+    "statement_type": "PL",
+    "section": "Revenue",
+    "parent_account_id": null,
+    "line_item_order": 1,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "PL002",
+    "account_name": "Total Sales",
+    "statement_type": "PL",
+    "section": "Revenue",
+    "parent_account_id": "PL004",
+    "line_item_order": 2,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL003",
+    "account_name": "Sales Discount/Return",
+    "statement_type": "PL",
+    "section": "Revenue",
+    "parent_account_id": "PL004",
+    "line_item_order": 3,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL004",
+    "account_name": "Net Sales",
+    "statement_type": "PL",
+    "section": "Revenue",
+    "parent_account_id": "PL009",
+    "line_item_order": 4,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL005",
+    "account_name": "COGS before Direct Cost & Forex Gain/Loss",
+    "statement_type": "PL",
+    "section": "COGS",
+    "parent_account_id": "PL008",
+    "line_item_order": 5,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL006",
+    "account_name": "Direct Income",
+    "statement_type": "PL",
+    "section": "COGS",
+    "parent_account_id": "PL008",
+    "line_item_order": 6,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "PL007",
+    "account_name": "Direct Costs",
+    "statement_type": "PL",
+    "section": "COGS",
+    "parent_account_id": "PL008",
+    "line_item_order": 7,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL008",
+    "account_name": "Total Cost of Goods Sold",
+    "statement_type": "PL",
+    "section": "COGS",
+    "parent_account_id": "PL009",
+    "line_item_order": 8,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL009",
+    "account_name": "Gross Profit",
+    "statement_type": "PL",
+    "section": "Gross Profit",
+    "parent_account_id": "PL054",
+    "line_item_order": 9,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL010",
+    "account_name": "Staff and Staff related Costs",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 10,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL011",
+    "account_name": "Salaries & Wages",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL010",
+    "line_item_order": 11,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL012",
+    "account_name": "Bonus & Incentives",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL010",
+    "line_item_order": 12,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL013",
+    "account_name": "Commission",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL010",
+    "line_item_order": 13,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL014",
+    "account_name": "Staff Insurance",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL010",
+    "line_item_order": 14,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL015",
+    "account_name": "Staff Welfare",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL010",
+    "line_item_order": 15,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL016",
+    "account_name": "Marketing Expenses",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 16,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL017",
+    "account_name": "Advertising Expense",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL016",
+    "line_item_order": 17,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL018",
+    "account_name": "Entertainment",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL016",
+    "line_item_order": 18,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL019",
+    "account_name": "Sales Expenses",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 19,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL020",
+    "account_name": "Freight, Storage & Handling",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL019",
+    "line_item_order": 20,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL021",
+    "account_name": "Sales Fees",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL019",
+    "line_item_order": 21,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL022",
+    "account_name": "Packaging and Labeling",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL019",
+    "line_item_order": 22,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL023",
+    "account_name": "Utilities",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 23,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL024",
+    "account_name": "Telephone Expense",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL023",
+    "line_item_order": 24,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL025",
+    "account_name": "Electricity Expense",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL023",
+    "line_item_order": 25,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL026",
+    "account_name": "Profit/Loss Sharing",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 26,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL027",
+    "account_name": "Rent Expense",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 27,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL028",
+    "account_name": "Depreciation",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 28,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL029",
+    "account_name": "Consumables",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 29,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL030",
+    "account_name": "Printing & Stationery",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL029",
+    "line_item_order": 30,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL031",
+    "account_name": "Pantry Expenses",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL029",
+    "line_item_order": 31,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL032",
+    "account_name": "Maintenance Expenses",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 32,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL033",
+    "account_name": "Repairs & Maintenance",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL032",
+    "line_item_order": 33,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL034",
+    "account_name": "Security Expense",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL032",
+    "line_item_order": 34,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL035",
+    "account_name": "Taxes, Licenses & Permits",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 35,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL036",
+    "account_name": "Other Expenses",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 36,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL037",
+    "account_name": "Sample Expenses",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 37,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL038",
+    "account_name": "Interest Expense",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 38,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL039",
+    "account_name": "Interest on  Shareholder loan",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 39,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL040",
+    "account_name": "Warehouse Expense",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 40,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL041",
+    "account_name": "Consulting & Professional Fee",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 41,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL042",
+    "account_name": "General Insurance Expense",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 42,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL043",
+    "account_name": "Postage & Courier Expenses",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 43,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL044",
+    "account_name": "Tax Expenses",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 44,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL045",
+    "account_name": "Transport Expense",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 45,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL046",
+    "account_name": "Office Expenses",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 46,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL047",
+    "account_name": "Modern Market Trading Terms",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 47,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL048",
+    "account_name": "Stock Write Off",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 48,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL049",
+    "account_name": "Bad Debts",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL036",
+    "line_item_order": 49,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL050",
+    "account_name": "Travel Expenses",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL053",
+    "line_item_order": 50,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL051",
+    "account_name": "Travel Expense - International",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL050",
+    "line_item_order": 51,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL052",
+    "account_name": "Travel Expense - Domestic",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL050",
+    "line_item_order": 52,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL053",
+    "account_name": "Operating Expenses",
+    "statement_type": "PL",
+    "section": "Operating Expenses",
+    "parent_account_id": "PL054",
+    "line_item_order": 53,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL054",
+    "account_name": "Operative Profit/(Loss)",
+    "statement_type": "PL",
+    "section": "Operative Profit",
+    "parent_account_id": "PL063",
+    "line_item_order": 54,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL055",
+    "account_name": "Miscellaneous Expenses",
+    "statement_type": "PL",
+    "section": "Non Operating",
+    "parent_account_id": "PL062",
+    "line_item_order": 55,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL056",
+    "account_name": "Misc. Expense",
+    "statement_type": "PL",
+    "section": "Non Operating",
+    "parent_account_id": "PL055",
+    "line_item_order": 56,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL057",
+    "account_name": "Bank Charges",
+    "statement_type": "PL",
+    "section": "Non Operating",
+    "parent_account_id": "PL055",
+    "line_item_order": 57,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL058",
+    "account_name": "Foreign Exchange (Gain) Loss",
+    "statement_type": "PL",
+    "section": "Non Operating",
+    "parent_account_id": "PL055",
+    "line_item_order": 58,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL059",
+    "account_name": "Miscellaneous Incomes",
+    "statement_type": "PL",
+    "section": "Non Operating",
+    "parent_account_id": "PL062",
+    "line_item_order": 59,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL060",
+    "account_name": "Other Income",
+    "statement_type": "PL",
+    "section": "Non Operating",
+    "parent_account_id": "PL059",
+    "line_item_order": 60,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "PL061",
+    "account_name": "Other Income - CPCI Income",
+    "statement_type": "PL",
+    "section": "Non Operating",
+    "parent_account_id": "PL059",
+    "line_item_order": 61,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "PL062",
+    "account_name": "Total Non Operating Expenses/(Income)",
+    "statement_type": "PL",
+    "section": "Non Operating",
+    "parent_account_id": "PL063",
+    "line_item_order": 62,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL063",
+    "account_name": "Net Income/(Loss) Before Tax & Previous Year Expenses",
+    "statement_type": "PL",
+    "section": "Net Income",
+    "parent_account_id": "PL070",
+    "line_item_order": 63,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL064",
+    "account_name": "Extraordinary / Previous Year Expenses",
+    "statement_type": "PL",
+    "section": "Extraordinary",
+    "parent_account_id": "PL070",
+    "line_item_order": 64,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL065",
+    "account_name": "Tax Expenses - Prev Years",
+    "statement_type": "PL",
+    "section": "Extraordinary",
+    "parent_account_id": "PL064",
+    "line_item_order": 65,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL066",
+    "account_name": "Credit Note - Prev. Years",
+    "statement_type": "PL",
+    "section": "Extraordinary",
+    "parent_account_id": "PL064",
+    "line_item_order": 66,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL067",
+    "account_name": "Previous Year Rent Expenses",
+    "statement_type": "PL",
+    "section": "Extraordinary",
+    "parent_account_id": "PL064",
+    "line_item_order": 67,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL068",
+    "account_name": "Previous Year Commissions",
+    "statement_type": "PL",
+    "section": "Extraordinary",
+    "parent_account_id": "PL064",
+    "line_item_order": 68,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL069",
+    "account_name": "Corporate Tax",
+    "statement_type": "PL",
+    "section": "Extraordinary",
+    "parent_account_id": "PL064",
+    "line_item_order": 69,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "PL070",
+    "account_name": "Net Income/(Loss) After Tax & Previous Year Expenses",
+    "statement_type": "PL",
+    "section": "Net Income",
+    "parent_account_id": null,
+    "line_item_order": 70,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL071",
+    "account_name": "Net Income Before Depreciation",
+    "statement_type": "PL",
+    "section": "Memo",
+    "parent_account_id": null,
+    "line_item_order": 71,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL072",
+    "account_name": "Net Profit without interest on bank loan",
+    "statement_type": "PL",
+    "section": "Memo",
+    "parent_account_id": null,
+    "line_item_order": 72,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "PL073",
+    "account_name": "Net Profit without interest on shareholder loan",
+    "statement_type": "PL",
+    "section": "Memo",
+    "parent_account_id": null,
+    "line_item_order": 73,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "BS001",
+    "account_name": "Cash & Cash Equivalent",
+    "statement_type": "BS",
+    "section": "CURRENT ASSETS",
+    "parent_account_id": "BS008",
+    "line_item_order": 1,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "BS002",
+    "account_name": "Accounts Receivable",
+    "statement_type": "BS",
+    "section": "CURRENT ASSETS",
+    "parent_account_id": "BS008",
+    "line_item_order": 2,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "BS003",
+    "account_name": "Inventory",
+    "statement_type": "BS",
+    "section": "CURRENT ASSETS",
+    "parent_account_id": "BS008",
+    "line_item_order": 3,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "BS004",
+    "account_name": "Prepaid Taxes",
+    "statement_type": "BS",
+    "section": "CURRENT ASSETS",
+    "parent_account_id": "BS008",
+    "line_item_order": 4,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "BS005",
+    "account_name": "Prepaid Expenses",
+    "statement_type": "BS",
+    "section": "CURRENT ASSETS",
+    "parent_account_id": "BS008",
+    "line_item_order": 5,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "BS006",
+    "account_name": "Short Term Deposits",
+    "statement_type": "BS",
+    "section": "CURRENT ASSETS",
+    "parent_account_id": "BS008",
+    "line_item_order": 6,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "BS007",
+    "account_name": "Other Receivables",
+    "statement_type": "BS",
+    "section": "CURRENT ASSETS",
+    "parent_account_id": "BS008",
+    "line_item_order": 7,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "BS008",
+    "account_name": "Total Current Assets",
+    "statement_type": "BS",
+    "section": "CURRENT ASSETS",
+    "parent_account_id": "BS014",
+    "line_item_order": 8,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "BS009",
+    "account_name": "Fixed Assets",
+    "statement_type": "BS",
+    "section": "NON CURRENT ASSETS",
+    "parent_account_id": "BS011",
+    "line_item_order": 9,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "BS010",
+    "account_name": "Accumulated Depreciation",
+    "statement_type": "BS",
+    "section": "NON CURRENT ASSETS",
+    "parent_account_id": "BS011",
+    "line_item_order": 10,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "BS011",
+    "account_name": "Net Fixed Assets",
+    "statement_type": "BS",
+    "section": "NON CURRENT ASSETS",
+    "parent_account_id": "BS013",
+    "line_item_order": 11,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "BS012",
+    "account_name": "Other Non-current Asset",
+    "statement_type": "BS",
+    "section": "NON CURRENT ASSETS",
+    "parent_account_id": "BS013",
+    "line_item_order": 12,
+    "is_header": false,
+    "normal_balance": "DR"
+  },
+  {
+    "account_code": "BS013",
+    "account_name": "Total Non-Current Assets",
+    "statement_type": "BS",
+    "section": "NON CURRENT ASSETS",
+    "parent_account_id": "BS014",
+    "line_item_order": 13,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "BS014",
+    "account_name": "Total Assets",
+    "statement_type": "BS",
+    "section": "TOTAL ASSETS",
+    "parent_account_id": null,
+    "line_item_order": 14,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "BS015",
+    "account_name": "Accounts Payable",
+    "statement_type": "BS",
+    "section": "LIABILITIES",
+    "parent_account_id": "BS020",
+    "line_item_order": 15,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "BS016",
+    "account_name": "Taxes Payable",
+    "statement_type": "BS",
+    "section": "LIABILITIES",
+    "parent_account_id": "BS020",
+    "line_item_order": 16,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "BS017",
+    "account_name": "Accrued Expenses",
+    "statement_type": "BS",
+    "section": "LIABILITIES",
+    "parent_account_id": "BS020",
+    "line_item_order": 17,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "BS018",
+    "account_name": "Loans & Advances taken",
+    "statement_type": "BS",
+    "section": "LIABILITIES",
+    "parent_account_id": "BS020",
+    "line_item_order": 18,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "BS019",
+    "account_name": "Interco Balances",
+    "statement_type": "BS",
+    "section": "LIABILITIES",
+    "parent_account_id": "BS020",
+    "line_item_order": 19,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "BS020",
+    "account_name": "Total Short Term Liabilities",
+    "statement_type": "BS",
+    "section": "LIABILITIES",
+    "parent_account_id": "BS024",
+    "line_item_order": 20,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "BS021",
+    "account_name": "Share Capital",
+    "statement_type": "BS",
+    "section": "EQUITY",
+    "parent_account_id": "BS023",
+    "line_item_order": 21,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "BS022",
+    "account_name": "Retained Earnings",
+    "statement_type": "BS",
+    "section": "EQUITY",
+    "parent_account_id": "BS023",
+    "line_item_order": 22,
+    "is_header": false,
+    "normal_balance": "CR"
+  },
+  {
+    "account_code": "BS023",
+    "account_name": "Total Equity",
+    "statement_type": "BS",
+    "section": "EQUITY",
+    "parent_account_id": "BS024",
+    "line_item_order": 23,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "BS024",
+    "account_name": "Total Liabilities and Equity",
+    "statement_type": "BS",
+    "section": "TOTAL LIABILITIES AND EQUITY",
+    "parent_account_id": null,
+    "line_item_order": 24,
+    "is_header": true,
+    "normal_balance": null
+  },
+  {
+    "account_code": "BS500",
+    "account_name": "Other Payables",
+    "statement_type": "BS",
+    "section": "LIABILITIES",
+    "parent_account_id": "BS020",
+    "line_item_order": 19.5,
+    "is_header": false,
+    "normal_balance": "CR"
+  }
+]

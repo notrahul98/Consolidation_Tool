@@ -66,10 +66,13 @@ def _write_entity_sheets(wb, conn, period_id):
     entities = entity_repo.list_all(conn)
     coa_leaves = group_coa_repo.list_leaf_categories(conn)
     matrix = consolidated_repo.get_matrix(conn, period_id)
-    by_account_entity = {
-        (r["group_account_id"], r["entity_id"]): (r["closing_dr"] or 0) - (r["closing_cr"] or 0)
-        for r in matrix
-    }
+    # A given (account, entity) can have BOTH an entity_tb row and an entity-specific
+    # adjustment row — sum them, don't just keep the last one, or the base TB value
+    # silently disappears from that entity's cell whenever an adjustment targets it.
+    by_account_entity: dict[tuple[int, int | None], float] = {}
+    for r in matrix:
+        key = (r["group_account_id"], r["entity_id"])
+        by_account_entity[key] = by_account_entity.get(key, 0.0) + (r["closing_dr"] or 0) - (r["closing_cr"] or 0)
 
     entity_row: dict[str, dict[str, int]] = {}
     for e in entities:
