@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Stock / COGS{% endblock %}
+{% block content %}
+<h1>Stock / COGS</h1>
+<p class="subtitle">Reconcile opening stock, closing stock, and purchases to compute Cost of Goods Sold.</p>
+
+{% if not rows %}
+  <p class="empty">No entities found — import TBs for {{ period_str }} first.</p>
+{% else %}
+<form method="post" action="/periods/{{ period_str }}/stock">
+  <div class="card">
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Entity</th>
+          <th class="num-col">Opening Stock</th>
+          <th class="num-col">Closing Stock</th>
+          <th class="num-col">Purchases</th>
+          <th class="num-col">Computed COGS</th>
+          <th class="num-col">COGS in TB</th>
+          <th class="num-col">Adjustment</th>
+          <th>Balancing A/c</th>
+          <th>Warnings</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row.entity_code }}</td>
+          <td class="num">
+            {% if row.opening_override is not none %}
+            <input type="number" step="0.01" name="opening" value="{{ row.opening | idr }}" class="num-input">
+            <small class="reset-link"><a href="#">auto: {{ row.opening_auto | idr }} · reset</a></small>
+            {% else %}
+            <input type="number" step="0.01" name="opening" value="{{ row.opening_auto | idr if row.opening_auto else '' }}" class="num-input">
+            {% endif %}
+          </td>
+          <td class="num">
+            {% if row.closing_override is not none %}
+            <input type="number" step="0.01" name="closing" value="{{ row.closing | idr }}" class="num-input">
+            <small class="reset-link"><a href="#">auto: {{ row.closing_auto | idr }} · reset</a></small>
+            {% else %}
+            <input type="number" step="0.01" name="closing" value="{{ row.closing_auto | idr }}" class="num-input">
+            {% endif %}
+          </td>
+          <td class="num">
+            {% if row.purchases_override is not none %}
+            <input type="number" step="0.01" name="purchases" value="{{ row.purchases | idr }}" class="num-input">
+            <small class="reset-link"><a href="#">auto: {{ row.purchases_auto | idr }} · reset</a></small>
+            {% else %}
+            <input type="number" step="0.01" name="purchases" value="{{ row.purchases_auto | idr }}" class="num-input">
+            {% endif %}
+          </td>
+          <td class="num {{ 'neg' if row.computed_cogs and row.computed_cogs < 0 }}">
+            {% if row.computed_cogs is not none %}
+            {{ row.computed_cogs | idr }}
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td class="num {{ 'neg' if row.tb_cogs < 0 }}">{{ row.tb_cogs | idr }}</td>
+          <td class="num {{ 'neg' if row.delta and row.delta < 0 }}">
+            {% if row.delta is not none and row.delta != 0 %}
+            {{ row.delta | idr }}
+            {% else %}
+            —
+            {% endif %}
+          </td>
+          <td>
+            <input type="hidden" name="entity_id" value="{{ row.entity_id }}">
+            <select name="balancing">
+              <option value="inventory" {{ 'selected' if row.balancing_account == 'inventory' }}>Inventory</option>
+              <option value="retained_earnings" {{ 'selected' if row.balancing_account == 'retained_earnings' }}>Retained Earnings</option>
+            </select>
+          </td>
+          <td>
+            {% set has_warnings = false %}
+            {% if row.opening_break != 0 %}
+              {% set has_warnings = true %}
+              <span class="badge badge-warn">Stock restated (break: {{ row.opening_break | idr }})</span><br>
+            {% endif %}
+            {% if row.purchase_ledger_count == 0 %}
+              {% set has_warnings = true %}
+              <span class="badge badge-warn">No purchases mapped</span><br>
+            {% endif %}
+            {% if row.opening is none %}
+              {% set has_warnings = true %}
+              <span class="badge badge-info">No prior period</span>
+            {% endif %}
+            {% if not has_warnings %}
+            —
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="footer-row">
+          <td><strong>Total</strong></td>
+          <td colspan="2"></td>
+          <td></td>
+          <td class="num {{ 'neg' if total_computed_cogs < 0 }}"><strong>{{ total_computed_cogs | idr }}</strong></td>
+          <td class="num {{ 'neg' if total_tb_cogs < 0 }}"><strong>{{ total_tb_cogs | idr }}</strong></td>
+          <td colspan="3"></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+  {% if not period_locked %}
+  <button class="btn" type="submit">Save figures</button>
+  {% endif %}
+</form>
+
+{% if not period_locked %}
+<form method="post" action="/periods/{{ period_str }}/stock/generate" style="margin-top: 1em;">
+  <input type="hidden" name="ref" value="">
+  <button class="btn btn-secondary" type="submit">Generate adjustment</button>
+</form>
+{% endif %}
+
+{% endif %}
+{% endblock %}
