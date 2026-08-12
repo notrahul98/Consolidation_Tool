@@ -167,6 +167,80 @@ def _v18_locked_period_immutable(conn: sqlite3.Connection, period_id: int) -> Va
     return ValidationResult("V18", "Locked periods carry no unapplied draft adjustments", "Error", not details, details)
 
 
+def _v19_stock_cogs_booked(conn: sqlite3.Connection, period_id: int) -> ValidationResult:
+    """Stock/COGS movement booked. Fails when period has non-zero Inventory and either
+    (a) no applied inventory_movement adjustment exists, or (b) one exists but its amounts
+    no longer match the current stock_movement figures (i.e. figures were edited after generation)."""
+    details = []
+
+    # Get all entities with non-zero Inventory in consolidated TB
+    inventory_entities = conn.execute(
+        """SELECT ctb.entity_id, e.entity_code,
+                  SUM(ctb.closing_dr) - SUM(ctb.closing_cr) AS inventory_balance
+           FROM consolidated_tb ctb
+           JOIN entities e ON ctb.entity_id = e.entity_id
+           JOIN group_coa gc ON gc.group_account_id = ctb.group_account_id
+           WHERE ctb.period_id = ? AND gc.account_name = 'Inventory'
+                 AND ctb.source_type = 'total'
+           GROUP BY ctb.entity_id
+           HAVING ABS(inventory_balance) > ?""",
+        (period_id, TOLERANCE_IDR),
+    ).fetchall()
+
+    if not inventory_entities:
+        # No non-zero inventory, so no need to book
+        return ValidationResult("V19", "Stock/COGS movement booked", "Warning", True, [])
+
+    # Check if an applied inventory_movement adjustment exists
+    applied_adj = conn.execute(
+        """SELECT adjustment_id FROM adjustments
+           WHERE period_id = ? AND adjustment_type = 'inventory_movement' AND status = 'applied'
+           LIMIT 1""",
+        (period_id,),
+    ).fetchone()
+
+    if not applied_adj:
+        details.append("Period has non-zero Inventory but no applied stock adjustment")
+        return ValidationResult("V19", "Stock/COGS movement booked", "Warning", False, details)
+
+    # Adjustment exists; verify amounts match current stock_movement
+    for inv in inventory_entities:
+        stock = conn.execute(
+            """SELECT opening_stock_auto, opening_stock_override, closing_stock_auto, closing_stock_override,
+                      purchases_auto, purchases_override
+               FROM stock_movement WHERE period_id = ? AND entity_id = ?""",
+            (period_id, inv["entity_id"]),
+        ).fetchone()
+
+        if not stock:
+            details.append(f"{inv['entity_code']}: non-zero Inventory but no stock_movement row")
+            continue
+
+        # Compute current delta
+        opening = stock["opening_stock_override"] if stock["opening_stock_override"] is not None else stock["opening_stock_auto"]
+        closing = stock["closing_stock_override"] if stock["closing_stock_override"] is not None else stock["closing_stock_auto"]
+        if opening is None or closing is None:
+            continue
+        delta = opening - closing
+
+        if abs(delta) > TOLERANCE_IDR:
+            # Check that adjustment lines match the delta
+            adj_balance = conn.execute(
+                """SELECT SUM(CASE WHEN gc.normal_balance = 'Dr' THEN al.debit_amount - al.credit_amount
+                                  ELSE al.credit_amount - al.debit_amount END) AS net
+                   FROM adjustment_lines al
+                   JOIN adjustments a ON al.adjustment_id = a.adjustment_id
+                   JOIN group_coa gc ON al.group_account_id = gc.group_account_id
+                   WHERE a.adjustment_id = ? AND al.entity_id = ? AND gc.account_name = 'Inventory'""",
+                (applied_adj["adjustment_id"], inv["entity_id"]),
+            ).fetchone()
+
+            if not adj_balance or abs((adj_balance["net"] or 0) - abs(delta)) > TOLERANCE_IDR:
+                details.append(f"{inv['entity_code']}: stock figures changed after adjustment generation")
+
+    return ValidationResult("V19", "Stock/COGS movement booked", "Warning", not details, details)
+
+
 def run_all(conn: sqlite3.Connection, period_id: int) -> list[ValidationResult]:
     return [
         _v1_entity_grand_total_ties(conn, period_id),
@@ -179,4 +253,5 @@ def run_all(conn: sqlite3.Connection, period_id: int) -> list[ValidationResult]:
         _v2_adjustments_balance(conn, period_id),
         _v14_draft_adjustments(conn, period_id),
         _v18_locked_period_immutable(conn, period_id),
+        _v19_stock_cogs_booked(conn, period_id),
     ]
