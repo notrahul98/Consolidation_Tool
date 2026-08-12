@@ -1,7 +1,19 @@
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from src.services import audit_service
+
+
+@dataclass
+class EntityBreakdown:
+    """One entity's view of a ledger."""
+    entity_id: int
+    entity_code: str
+    primary_group: str
+    balance: float
+    category_id: int | None
+    category_name: str | None
 
 
 def ensure_rows_exist(conn: sqlite3.Connection, period_id: int) -> None:
@@ -21,6 +33,84 @@ def ensure_rows_exist(conn: sqlite3.Connection, period_id: int) -> None:
             (row["entity_id"], row["entity_ledger_name"]),
         )
     conn.commit()
+
+
+def ledger_rows_for_period(conn: sqlite3.Connection, period_id: int) -> list[dict]:
+    """One row per ledger name with per-entity breakdown. Used for UI mapping form.
+
+    Returns list of dicts with:
+    - ledger_name: str
+    - entities: list[dict] with entity_id, entity_code, primary_group, balance, category_name
+    - total_balance: float
+    - distinct_categories: int (count of distinct non-null category IDs)
+    - distinct_primary_groups: int
+    - needs_split: bool (True if appears in multiple entities with different mappings/groups)
+    - uniform_category: str | None (single category name if all entities map to same category)
+    """
+    rows = conn.execute(
+        """SELECT tbl.entity_ledger_name, tbl.tally_primary_group, tbi.entity_id,
+                  e.entity_code, ecm.group_account_id, ecm.mapping_status,
+                  (tbl.closing_dr - tbl.closing_cr) AS closing_balance,
+                  gca.account_name
+           FROM trial_balance_lines tbl
+           JOIN trial_balance_imports tbi ON tbl.import_id = tbi.import_id
+           JOIN entities e ON tbi.entity_id = e.entity_id
+           LEFT JOIN entity_coa_mapping ecm
+                  ON ecm.entity_id = tbi.entity_id AND ecm.entity_ledger_name = tbl.entity_ledger_name
+           LEFT JOIN group_coa gca ON ecm.group_account_id = gca.group_account_id
+           WHERE tbi.period_id = ?
+           ORDER BY tbl.entity_ledger_name, e.entity_code""",
+        (period_id,),
+    ).fetchall()
+
+    by_name: dict[str, dict] = {}
+    for r in rows:
+        entry = by_name.setdefault(r["entity_ledger_name"], {
+            "ledger_name": r["entity_ledger_name"],
+            "entities": [],
+            "primary_groups": set(),
+            "category_ids": set(),
+            "total_balance": 0.0,
+        })
+        entry["entities"].append({
+            "entity_id": r["entity_id"],
+            "entity_code": r["entity_code"],
+            "primary_group": r["tally_primary_group"] or "",
+            "balance": r["closing_balance"] or 0.0,
+            "category_id": r["group_account_id"],
+            "category_name": r["account_name"],
+        })
+        if r["tally_primary_group"]:
+            entry["primary_groups"].add(r["tally_primary_group"])
+        if r["group_account_id"]:
+            entry["category_ids"].add(r["group_account_id"])
+        entry["total_balance"] += r["closing_balance"] or 0.0
+
+    result = []
+    for name, entry in by_name.items():
+        distinct_categories = len(entry["category_ids"])
+        distinct_primary_groups = len(entry["primary_groups"])
+        needs_split = distinct_primary_groups > 1 or distinct_categories > 1
+
+        uniform_category = None
+        if distinct_categories == 1:
+            # Find the single category name from entities
+            for ent in entry["entities"]:
+                if ent["category_name"]:
+                    uniform_category = ent["category_name"]
+                    break
+
+        result.append({
+            "ledger_name": name,
+            "entities": entry["entities"],
+            "total_balance": entry["total_balance"],
+            "distinct_categories": distinct_categories,
+            "distinct_primary_groups": distinct_primary_groups,
+            "needs_split": needs_split,
+            "uniform_category": uniform_category,
+        })
+
+    return result
 
 
 def distinct_ledgers_for_period(conn: sqlite3.Connection, period_id: int) -> list[dict]:

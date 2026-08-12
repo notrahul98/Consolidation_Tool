@@ -2,7 +2,7 @@
 {% block title %}Mapping{% endblock %}
 {% block content %}
 <h1>Ledger Mapping</h1>
-<p class="subtitle">Categorize each distinct ledger into a fixed P&amp;L/Balance Sheet category. Changing a category and saving re-applies it to every entity that carries that ledger name.</p>
+<p class="subtitle">Categorize each distinct ledger into a fixed P&amp;L/Balance Sheet category. Ledgers that appear in different entities with different mappings are categorized per entity.</p>
 
 {% if not rows %}
   <p class="empty">No ledgers found — import TBs for {{ period_str }} first.</p>
@@ -23,22 +23,48 @@
       </thead>
       <tbody>
         {% for row in rows %}
-        <tr>
-          <td>{{ row.ledger_name }}</td>
-          <td>{{ row.entities }}</td>
-          <td>{{ row.primary_group }}</td>
-          <td class="num {{ 'neg' if row.balance < 0 }}">{{ row.balance | idr }}</td>
-          <td>{% if row.check %}<span class="badge badge-warn">{{ row.check }}</span>{% endif %}</td>
-          <td>
-            <input type="hidden" name="ledger_name" value="{{ row.ledger_name }}">
-            <select name="category">
-              <option value="">— uncategorized —</option>
-              {% for c in categories %}
-              <option value="{{ c }}" {{ 'selected' if c == row.current_category }}>{{ c }}</option>
-              {% endfor %}
-            </select>
-          </td>
-        </tr>
+          {% if row.is_parent %}
+          <tr class="parent-row">
+            <td><strong>{{ row.ledger_name }}</strong></td>
+            <td colspan="4"><span class="badge badge-warn">{{ row.badge }}</span></td>
+            <td class="num {{ 'neg' if row.total_balance < 0 }}"><strong>{{ row.total_balance | idr }}</strong></td>
+          </tr>
+          {% elif row.is_child %}
+          <tr class="child-row" style="background: #fafafa;">
+            <td style="padding-left: 2em;">→ {{ row.entity_code }}</td>
+            <td>{{ row.primary_group }}</td>
+            <td colspan="2" class="num {{ 'neg' if row.balance < 0 }}">{{ row.balance | idr }}</td>
+            <td></td>
+            <td>
+              <input type="hidden" name="ledger_name" value="{{ row.ledger_name }}">
+              <input type="hidden" name="entity_code" value="{{ row.entity_code }}">
+              <select name="category">
+                <option value="">— uncategorized —</option>
+                {% for c in categories %}
+                <option value="{{ c }}" {{ 'selected' if c == row.current_category }}>{{ c }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td>{{ row.ledger_name }}</td>
+            <td>{{ row.entity_code }}</td>
+            <td>{{ row.primary_group }}</td>
+            <td class="num {{ 'neg' if row.total_balance < 0 }}">{{ row.total_balance | idr }}</td>
+            <td></td>
+            <td>
+              <input type="hidden" name="ledger_name" value="{{ row.ledger_name }}">
+              <input type="hidden" name="entity_code" value="">
+              <select name="category">
+                <option value="">— uncategorized —</option>
+                {% for c in categories %}
+                <option value="{{ c }}" {{ 'selected' if c == row.current_category }}>{{ c }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          {% endif %}
         {% endfor %}
       </tbody>
     </table>
