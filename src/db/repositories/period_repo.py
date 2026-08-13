@@ -69,3 +69,49 @@ def unlock(conn: sqlite3.Connection, period_id: int, user: str | None = None) ->
         (period_id,),
     )
     audit_service.log(conn, "unlock", "periods", str(period_id), user=user)
+
+
+def mark_consolidated(conn: sqlite3.Connection, period_id: int) -> None:
+    """Records both a human-readable timestamp and the current high-water mark of
+    audit_log.log_id. Staleness detection (below) uses the log_id marker, not the
+    timestamp — see migration 005 for why: wall-clock comparison is unreliable when
+    operations happen faster than clock resolution, which real automated/test use hits
+    often enough to matter."""
+    latest_log_id = conn.execute("SELECT COALESCE(MAX(log_id), 0) FROM audit_log").fetchone()[0]
+    conn.execute(
+        "UPDATE periods SET consolidated_at = ?, consolidated_through_log_id = ? WHERE period_id = ?",
+        (datetime.now(timezone.utc).isoformat(), latest_log_id, period_id),
+    )
+
+
+def is_consolidation_stale(conn: sqlite3.Connection, period_id: int) -> bool:
+    """True when an adjustment for this period has been created, edited, applied, or
+    deleted since the last successful consolidate. Compares the audit_log.log_id
+    high-water mark recorded at that consolidate against the newest audit_log.log_id for
+    table_name='adjustments' on that period's *current* adjustment ids — an adjustment
+    deleted after consolidation won't be caught by this (its id no longer resolves to the
+    period), which matches the source plan's described approach rather than adding
+    further tracking to catch that edge case precisely."""
+    period = conn.execute(
+        "SELECT consolidated_at, consolidated_through_log_id FROM periods WHERE period_id = ?", (period_id,)
+    ).fetchone()
+    if period is None or period["consolidated_at"] is None:
+        return False
+
+    adjustment_ids = [
+        str(r["adjustment_id"]) for r in
+        conn.execute("SELECT adjustment_id FROM adjustments WHERE period_id = ?", (period_id,)).fetchall()
+    ]
+    if not adjustment_ids:
+        return False
+
+    placeholders = ",".join("?" for _ in adjustment_ids)
+    row = conn.execute(
+        f"""SELECT MAX(log_id) AS latest FROM audit_log
+            WHERE table_name = 'adjustments' AND record_id IN ({placeholders})""",
+        adjustment_ids,
+    ).fetchone()
+    if row is None or row["latest"] is None:
+        return False
+
+    return row["latest"] > period["consolidated_through_log_id"]

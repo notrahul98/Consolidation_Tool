@@ -27,10 +27,15 @@
         <span class="badge badge-{{ 'applied' if adj.status == 'applied' else 'draft' }}">{{ adj.status }}</span>
         <span class="subtitle" style="display:inline;margin-left:8px">{{ adj.type }}</span>
       </div>
-      <form method="post" action="/periods/{{ period_str }}/adjustments/{{ adj.ref }}/delete"
-            onsubmit="return confirm('Delete {{ adj.ref }}?');" class="inline">
-        <button class="btn btn-danger btn-sm" type="submit" {{ 'disabled' if period_status == 'locked' }}>Delete</button>
-      </form>
+      <div class="field-row">
+        {% if period_status != 'locked' %}
+        <a class="btn btn-secondary btn-sm" href="/periods/{{ period_str }}/adjustments/{{ adj.ref }}/edit">Edit</a>
+        {% endif %}
+        <form method="post" action="/periods/{{ period_str }}/adjustments/{{ adj.ref }}/delete"
+              onsubmit="return confirm('Delete {{ adj.ref }}?');" class="inline">
+          <button class="btn btn-danger btn-sm" type="submit" {{ 'disabled' if period_status == 'locked' }}>Delete</button>
+        </form>
+      </div>
     </div>
     <p style="margin:0 0 10px">{{ adj.narration }}</p>
     <table>

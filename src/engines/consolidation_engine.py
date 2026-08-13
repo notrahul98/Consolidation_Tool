@@ -5,7 +5,7 @@ mirroring the entity-columns + total matrix layout the user already works with
 import sqlite3
 from collections import defaultdict
 
-from src.db.repositories import consolidated_repo
+from src.db.repositories import consolidated_repo, period_repo
 
 MATERIALITY_IDR = 0.0  # any non-zero closing balance is "material" for blocking purposes
 
@@ -122,5 +122,7 @@ def consolidate_period(conn: sqlite3.Connection, period_id: int) -> dict:
             odr, ocr, pdr, pcr, cdr, ccr, source_type="total",
         )
         rows_written += 1
+
+    period_repo.mark_consolidated(conn, period_id)
 
     return {"blocked": False, "unmapped_material": [], "rows_written": rows_written}

@@ -60,20 +60,37 @@ def _inject_period_status(request) -> dict:
     than trust each route handler to remember to pass period_status into its own template
     context (a real bug found in RCA: only the dashboard route did, so the locked-period
     badge silently disappeared on every other page), resolve it here once, centrally, for
-    every render — a route can still override it by passing period_status explicitly."""
+    every render — a route can still override it by passing period_status explicitly.
+
+    Also resolves consolidation_stale the same way, for the same reason (source plan §4.4):
+    an edited/applied/deleted adjustment since the last consolidate should show an amber
+    banner on every period-scoped page, not just the one the edit happened to be made from."""
     period_str = request.path_params.get("period_str")
     if not period_str:
         return {}
     try:
         year_str, month_str = period_str.split("-")
         conn = sqlite3.connect(_db_path())
+        conn.row_factory = sqlite3.Row
         try:
             row = conn.execute(
-                "SELECT status FROM periods WHERE year = ? AND month = ?", (int(year_str), int(month_str))
+                "SELECT period_id, status FROM periods WHERE year = ? AND month = ?",
+                (int(year_str), int(month_str)),
             ).fetchone()
+            if row is None:
+                return {}
+            # Best-effort: this connection bypasses apply_migrations (unlike get_db()), so
+            # a not-yet-migrated on-disk db shouldn't take down the period_status badge
+            # that's worked here all along — only the new staleness banner degrades.
+            stale = False
+            try:
+                from src.db.repositories import period_repo
+                stale = period_repo.is_consolidation_stale(conn, row["period_id"])
+            except sqlite3.Error:
+                pass
         finally:
             conn.close()
-        return {"period_status": row[0] if row else None}
+        return {"period_status": row["status"], "consolidation_stale": stale}
     except (ValueError, sqlite3.Error):
         return {}
 
