@@ -30,26 +30,26 @@
           <td>{{ row.entity_code }}</td>
           <td class="num">
             {% if row.opening_override is not none %}
-            <input type="number" step="0.01" name="opening" value="{{ row.opening | idr }}" class="num-input">
+            <input type="number" step="0.01" name="opening" value="{{ row.opening if row.opening is not none else '' }}" class="num-input">
             <small class="reset-link"><a href="#">auto: {{ row.opening_auto | idr }} · reset</a></small>
             {% else %}
-            <input type="number" step="0.01" name="opening" value="{{ row.opening_auto | idr if row.opening_auto else '' }}" class="num-input">
+            <input type="number" step="0.01" name="opening" value="{{ row.opening_auto if row.opening_auto is not none else '' }}" class="num-input">
             {% endif %}
           </td>
           <td class="num">
             {% if row.closing_override is not none %}
-            <input type="number" step="0.01" name="closing" value="{{ row.closing | idr }}" class="num-input">
+            <input type="number" step="0.01" name="closing" value="{{ row.closing if row.closing is not none else '' }}" class="num-input">
             <small class="reset-link"><a href="#">auto: {{ row.closing_auto | idr }} · reset</a></small>
             {% else %}
-            <input type="number" step="0.01" name="closing" value="{{ row.closing_auto | idr }}" class="num-input">
+            <input type="number" step="0.01" name="closing" value="{{ row.closing_auto if row.closing_auto is not none else '' }}" class="num-input">
             {% endif %}
           </td>
           <td class="num">
             {% if row.purchases_override is not none %}
-            <input type="number" step="0.01" name="purchases" value="{{ row.purchases | idr }}" class="num-input">
+            <input type="number" step="0.01" name="purchases" value="{{ row.purchases if row.purchases is not none else '' }}" class="num-input">
             <small class="reset-link"><a href="#">auto: {{ row.purchases_auto | idr }} · reset</a></small>
             {% else %}
-            <input type="number" step="0.01" name="purchases" value="{{ row.purchases_auto | idr }}" class="num-input">
+            <input type="number" step="0.01" name="purchases" value="{{ row.purchases_auto if row.purchases_auto is not none else '' }}" class="num-input">
             {% endif %}
           </td>
           <td class="num {{ 'neg' if row.computed_cogs and row.computed_cogs < 0 }}">
