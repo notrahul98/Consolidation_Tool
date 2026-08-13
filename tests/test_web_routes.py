@@ -116,7 +116,7 @@ def test_validation_page_shows_all_checks_passing(client):
     c, conn, period_id = client
     resp = c.get("/periods/2026-06/validation")
     assert resp.status_code == 200
-    assert resp.text.count("badge-pass") == 10
+    assert resp.text.count("badge-pass") == 12
     assert "badge-fail" not in resp.text
 
 

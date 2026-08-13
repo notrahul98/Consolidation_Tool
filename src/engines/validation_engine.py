@@ -241,6 +241,25 @@ def _v19_stock_cogs_booked(conn: sqlite3.Connection, period_id: int) -> Validati
     return ValidationResult("V19", "Stock/COGS movement booked", "Warning", not details, details)
 
 
+def _v20_re_movement_ties_to_prior_profit(conn: sqlite3.Connection, period_id: int) -> ValidationResult:
+    """Retained Earnings movement ties to prior period profit. Severity Warning. Wraps
+    re_check.run(). Detail line per entity whose abs(gap) > TOLERANCE_IDR, plus a
+    group-level line. Passes when not applicable."""
+    from src.engines import re_check
+
+    result = re_check.run(conn, period_id)
+    if not result.applicable:
+        return ValidationResult("V20", "Retained Earnings movement ties to prior period profit", "Warning", True, [])
+
+    details = []
+    for row in result.rows:
+        if abs(row.gap) > TOLERANCE_IDR:
+            label = row.entity_code if row.entity_code else "Group total"
+            details.append(f"{label}: RE gap={row.gap:.2f} (expected {row.expected:.2f}, actual {row.re_closing_current:.2f})")
+
+    return ValidationResult("V20", "Retained Earnings movement ties to prior period profit", "Warning", not details, details)
+
+
 def run_all(conn: sqlite3.Connection, period_id: int) -> list[ValidationResult]:
     return [
         _v1_entity_grand_total_ties(conn, period_id),
@@ -254,4 +273,5 @@ def run_all(conn: sqlite3.Connection, period_id: int) -> list[ValidationResult]:
         _v14_draft_adjustments(conn, period_id),
         _v18_locked_period_immutable(conn, period_id),
         _v19_stock_cogs_booked(conn, period_id),
+        _v20_re_movement_ties_to_prior_profit(conn, period_id),
     ]

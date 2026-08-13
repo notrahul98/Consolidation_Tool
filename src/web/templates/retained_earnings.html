@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Retained Earnings{% endblock %}
+{% block content %}
+<h1>Retained Earnings Movement</h1>
+<p class="subtitle">Reconciles this period's Retained Earnings closing against the prior period's closing plus its net profit. Diagnostic only — never blocks locking a period.</p>
+
+{% if not result.applicable %}
+  <div class="card">
+    <p class="empty">Not applicable: {{ result.reason }}.</p>
+  </div>
+{% else %}
+
+<div class="card">
+  <h2>Group Reconciliation</h2>
+  <table class="waterfall">
+    <tbody>
+      <tr>
+        <td>RE closing {{ result.prior_period_str }}</td>
+        <td class="num">{{ group_row.re_closing_prior | idr }}</td>
+      </tr>
+      <tr>
+        <td>+ Net profit/(loss) {{ result.prior_period_str }}</td>
+        <td class="num {{ 'neg' if group_row.prior_net_profit < 0 }}">{{ group_row.prior_net_profit | idr }}</td>
+      </tr>
+      <tr class="subtotal-row">
+        <td>= Expected RE closing {{ period_str }}</td>
+        <td class="num">{{ group_row.expected | idr }}</td>
+      </tr>
+      <tr>
+        <td>Actual RE closing {{ period_str }}</td>
+        <td class="num">{{ group_row.re_closing_current | idr }}</td>
+      </tr>
+      <tr class="total-row">
+        <td><strong>Gap</strong></td>
+        <td class="num"><strong><span class="badge {{ 'badge-pass' if (group_row.gap | abs) <= tolerance else 'badge-warn' }}">{{ group_row.gap | idr }}</span></strong></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Per-Entity Detail</h2>
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Entity</th>
+        <th class="num-col">RE Closing {{ result.prior_period_str }}</th>
+        <th class="num-col">Prior Net Profit</th>
+        <th class="num-col">Expected RE Closing</th>
+        <th class="num-col">Actual RE Closing {{ period_str }}</th>
+        <th class="num-col">Gap</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in entity_rows %}
+      <tr>
+        <td>{{ row.entity_code }}</td>
+        <td class="num {{ 'neg' if row.re_closing_prior < 0 }}">{{ row.re_closing_prior | idr }}</td>
+        <td class="num {{ 'neg' if row.prior_net_profit < 0 }}">{{ row.prior_net_profit | idr }}</td>
+        <td class="num {{ 'neg' if row.expected < 0 }}">{{ row.expected | idr }}</td>
+        <td class="num {{ 'neg' if row.re_closing_current < 0 }}">{{ row.re_closing_current | idr }}</td>
+        <td class="num">
+          <span class="badge {{ 'badge-pass' if (row.gap | abs) <= tolerance else 'badge-warn' }}">{{ row.gap | idr }}</span>
+        </td>
+      </tr>
+      {% endfor %}
+      <tr class="footer-row">
+        <td><strong>Total</strong></td>
+        <td class="num {{ 'neg' if group_row.re_closing_prior < 0 }}"><strong>{{ group_row.re_closing_prior | idr }}</strong></td>
+        <td class="num {{ 'neg' if group_row.prior_net_profit < 0 }}"><strong>{{ group_row.prior_net_profit | idr }}</strong></td>
+        <td class="num {{ 'neg' if group_row.expected < 0 }}"><strong>{{ group_row.expected | idr }}</strong></td>
+        <td class="num {{ 'neg' if group_row.re_closing_current < 0 }}"><strong>{{ group_row.re_closing_current | idr }}</strong></td>
+        <td class="num"><strong>{{ group_row.gap | idr }}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Linked Adjustments</h2>
+  {% if not result.linked_adjustments %}
+    <p class="empty">No adjustments touch Retained Earnings or any P&amp;L category in either period.</p>
+  {% else %}
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Ref</th>
+        <th>Period</th>
+        <th>Type</th>
+        <th>Entity</th>
+        <th>Category</th>
+        <th class="num-col">Dr</th>
+        <th class="num-col">Cr</th>
+        <th>Status</th>
+        <th>Narration</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for adj in result.linked_adjustments %}
+      <tr>
+        <td><a href="/periods/{{ adj.period_str }}/adjustments/{{ adj.external_ref }}/edit">{{ adj.external_ref }}</a></td>
+        <td>{{ adj.period_str }}</td>
+        <td>{{ adj.type }}</td>
+        <td>{{ adj.entity_code or '—' }}</td>
+        <td>{{ adj.category }}</td>
+        <td class="num">{{ adj.debit | idr }}</td>
+        <td class="num">{{ adj.credit | idr }}</td>
+        <td><span class="badge {{ 'badge-pass' if adj.status == 'applied' else 'badge-warn' }}">{{ adj.status }}</span></td>
+        <td>{{ adj.narration }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</div>
+
+{% endif %}
+{% endblock %}
