@@ -2,9 +2,11 @@
 Validation rules per the source plan Section 6.3: debits must equal credits, no line
 may carry both a debit and a credit, at least 2 lines, narration required."""
 
+import json
 import sqlite3
 
-from src.db.repositories import adjustment_repo, period_repo
+from src.db.repositories import adjustment_repo, group_coa_repo, period_repo
+from src.services import audit_service
 
 TOLERANCE_IDR = 0
 
@@ -39,6 +41,67 @@ def create_adjustment(conn: sqlite3.Connection, period_id: int, external_ref: st
 
     return adjustment_repo.create_or_replace(conn, period_id, external_ref, adjustment_type, narration,
                                                lines, user=user)
+
+
+def _snapshot(conn: sqlite3.Connection, adjustment_row: sqlite3.Row, lines: list[sqlite3.Row]) -> dict:
+    """Resolves entity codes and category names so the audit log's before/after JSON
+    reads like a human-reviewable journal entry, not raw foreign keys."""
+    line_snapshots = []
+    for l in lines:
+        entity_code = None
+        if l["entity_id"]:
+            e = conn.execute("SELECT entity_code FROM entities WHERE entity_id = ?", (l["entity_id"],)).fetchone()
+            entity_code = e["entity_code"] if e else None
+        category = group_coa_repo.get_by_id(conn, l["group_account_id"])
+        line_snapshots.append({
+            "entity": entity_code,
+            "category": category["account_name"] if category else None,
+            "debit": l["debit_amount"],
+            "credit": l["credit_amount"],
+        })
+    return {
+        "external_ref": adjustment_row["external_ref"],
+        "type": adjustment_row["adjustment_type"],
+        "narration": adjustment_row["narration"],
+        "status": adjustment_row["status"],
+        "lines": line_snapshots,
+    }
+
+
+def update_adjustment(conn: sqlite3.Connection, period_id: int, adjustment_id: int, adjustment_type: str,
+                        narration: str, lines: list[dict], user: str | None = None) -> int:
+    """Edit an existing adjustment (draft or applied) in place. Validates, requires the
+    period open, snapshots before/after into the audit log, and resets status to draft.
+
+    external_ref is immutable here by design — it's always read from the existing row,
+    never taken from the caller, so an edit can't collide with the (period_id, external_ref)
+    upsert key or become indistinguishable from creating a second adjustment."""
+    period_repo.require_open(conn, period_id, "edit an adjustment")
+
+    existing = conn.execute(
+        "SELECT * FROM adjustments WHERE adjustment_id = ? AND period_id = ?", (adjustment_id, period_id)
+    ).fetchone()
+    if existing is None:
+        raise ValueError(f"Adjustment {adjustment_id} not found in this period")
+
+    before = _snapshot(conn, existing, adjustment_repo.get_lines(conn, adjustment_id))
+
+    errors = validate(narration, lines, adjustment_type)
+    if errors:
+        raise ValueError(f"Adjustment '{existing['external_ref']}' is invalid:\n" + "\n".join(errors))
+
+    adjustment_repo.create_or_replace(
+        conn, period_id, existing["external_ref"], adjustment_type, narration, lines, user=user)
+
+    after_row = conn.execute("SELECT * FROM adjustments WHERE adjustment_id = ?", (adjustment_id,)).fetchone()
+    after = _snapshot(conn, after_row, adjustment_repo.get_lines(conn, adjustment_id))
+
+    audit_service.log(
+        conn, "edit", "adjustments", str(adjustment_id),
+        old_value=json.dumps(before), new_value=json.dumps(after), user=user,
+    )
+
+    return adjustment_id
 
 
 def copy_prior_month(conn: sqlite3.Connection, target_period_id: int, user: str | None = None) -> int:

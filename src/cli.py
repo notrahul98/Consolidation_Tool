@@ -184,6 +184,79 @@ def cmd_delete_adjustment(args: argparse.Namespace) -> None:
     print(f"Deleted adjustment {args.ref}. Re-run consolidate to remove its effect from the consolidated TB.")
 
 
+def cmd_edit_adjustment(args: argparse.Namespace) -> None:
+    """Loads only --ref's rows from the workbook and routes them through update_adjustment
+    — the single-entry, audited path. import-adjustments already round-trips everything;
+    this is for editing one existing entry with a before/after audit trail."""
+    import openpyxl
+    from src.db.repositories import group_coa_repo, adjustment_repo
+    from src.engines.adjustment_engine import update_adjustment
+
+    conn = _connect()
+    period = period_repo.get_by_str(conn, args.period)
+    if not period:
+        sys.exit(f"No period '{args.period}' found — run import-tb first.")
+
+    adj = conn.execute(
+        "SELECT * FROM adjustments WHERE period_id = ? AND external_ref = ?",
+        (period["period_id"], args.ref),
+    ).fetchone()
+    if adj is None:
+        sys.exit(f"No adjustment '{args.ref}' found in period {args.period}.")
+
+    wb = openpyxl.load_workbook(args.in_file, data_only=True)
+    ws = wb["Adjustments"]
+    header = [c.value for c in ws[1]]
+    col = {name: i + 1 for i, name in enumerate(header)}
+    required = {"Adjustment Ref", "Type", "Narration", "Category", "Debit", "Credit"}
+    if not required.issubset(col):
+        sys.exit(f"{args.in_file} is missing required column(s): {required - set(col)}")
+
+    adjustment_type = adj["adjustment_type"]
+    narration = adj["narration"]
+    lines = []
+    for row in range(2, ws.max_row + 1):
+        ref = ws.cell(row=row, column=col["Adjustment Ref"]).value
+        if not ref or str(ref).strip() != args.ref:
+            continue
+        category_name = ws.cell(row=row, column=col["Category"]).value
+        if not category_name:
+            continue
+        category = group_coa_repo.get_by_name(conn, str(category_name).strip())
+        if category is None:
+            sys.exit(f"Row {row}: unknown category '{category_name}'")
+
+        entity_code = ws.cell(row=row, column=col.get("Entity Code", 0)).value if "Entity Code" in col else None
+        entity_id = None
+        if entity_code:
+            e = entity_repo.get_by_code(conn, str(entity_code).strip())
+            if e is None:
+                sys.exit(f"Row {row}: unknown entity code '{entity_code}'")
+            entity_id = e["entity_id"]
+
+        adjustment_type = (ws.cell(row=row, column=col["Type"]).value or adjustment_type).strip()
+        narration = (ws.cell(row=row, column=col["Narration"]).value or narration).strip()
+        lines.append({
+            "entity_id": entity_id,
+            "group_account_id": category["group_account_id"],
+            "debit_amount": float(ws.cell(row=row, column=col["Debit"]).value or 0),
+            "credit_amount": float(ws.cell(row=row, column=col["Credit"]).value or 0),
+            "line_narration": ws.cell(row=row, column=col.get("Line Narration", 0)).value
+                if "Line Narration" in col else None,
+        })
+
+    if not lines:
+        sys.exit(f"No rows for ref '{args.ref}' found in {args.in_file}.")
+
+    try:
+        update_adjustment(conn, period["period_id"], adj["adjustment_id"], adjustment_type, narration,
+                            lines, user=getpass.getuser())
+    except ValueError as e:
+        sys.exit(str(e))
+    conn.commit()
+    print(f"Updated {args.ref} — back to draft. Apply it and re-run consolidate.")
+
+
 def cmd_lock_period(args: argparse.Namespace) -> None:
     from src.engines.validation_engine import run_all
     conn = _connect()
@@ -249,6 +322,12 @@ def main() -> None:
     p.add_argument("--period", required=True)
     p.add_argument("--in", dest="in_file", required=True)
     p.set_defaults(func=cmd_import_adjustments)
+
+    p = sub.add_parser("edit-adjustment", help="Edit a single existing adjustment from a workbook, with an audited before/after trail")
+    p.add_argument("--period", required=True)
+    p.add_argument("--ref", required=True, help="external_ref of the adjustment to edit")
+    p.add_argument("--in", dest="in_file", required=True)
+    p.set_defaults(func=cmd_edit_adjustment)
 
     p = sub.add_parser("apply-adjustments", help="Apply all draft adjustments for a period")
     p.add_argument("--period", required=True)

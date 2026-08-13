@@ -1,8 +1,14 @@
 {% extends "base.html" %}
-{% block title %}New Adjustment{% endblock %}
+{% block title %}{{ 'Edit Adjustment' if mode == 'edit' else 'New Adjustment' }}{% endblock %}
 {% block content %}
-<h1>New Adjustment</h1>
-<p class="subtitle">A double-entry journal — debits must equal credits, at least 2 lines, narration required.</p>
+<h1>{{ 'Edit Adjustment ' + ref if mode == 'edit' else 'New Adjustment' }}</h1>
+<p class="subtitle">
+  {% if mode == 'edit' %}
+  Editing resets this adjustment to draft — re-apply it and re-run Consolidate afterward. The ref can't be changed here; delete and recreate to rename.
+  {% else %}
+  A double-entry journal — debits must equal credits, at least 2 lines, narration required.
+  {% endif %}
+</p>
 
 {% if errors %}
 <div class="flash flash-error">
@@ -10,13 +16,17 @@
 </div>
 {% endif %}
 
-<form method="post" action="/periods/{{ period_str }}/adjustments/new">
+<form method="post" action="{{ '/periods/%s/adjustments/%s/edit' % (period_str, ref) if mode == 'edit' else '/periods/%s/adjustments/new' % period_str }}">
   <div class="card">
     <div class="field-row">
       <div class="field">
         <label for="external_ref">Adjustment Ref</label>
+        {% if mode == 'edit' %}
+        <input type="text" id="external_ref" value="{{ form.external_ref }}" readonly disabled>
+        {% else %}
         <input type="text" id="external_ref" name="external_ref" required
                value="{{ form.external_ref | default('') }}" placeholder="ADJ-{{ period_str }}-001">
+        {% endif %}
       </div>
       <div class="field">
         <label for="adjustment_type">Type</label>
@@ -43,6 +53,27 @@
         <div><label>Credit</label></div>
         <div></div>
       </div>
+      {% if lines %}
+      {% for line in lines %}
+      <div class="je-line">
+        <div class="field">
+          <select name="entity_code">
+            <option value="">(group-level)</option>
+            {% for e in entities %}<option value="{{ e.entity_code }}" {{ 'selected' if e.entity_code == line.entity_code }}>{{ e.entity_code }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <select name="category">
+            <option value=""></option>
+            {% for c in categories %}<option value="{{ c }}" {{ 'selected' if c == line.category }}>{{ c }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field"><input type="number" step="0.01" name="debit" value="{{ line.debit }}"></div>
+        <div class="field"><input type="number" step="0.01" name="credit" value="{{ line.credit }}"></div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="this.closest('.je-line').remove()">&times;</button>
+      </div>
+      {% endfor %}
+      {% else %}
       {% for _ in range(2) %}
       <div class="je-line">
         <div class="field">
@@ -62,11 +93,12 @@
         <button type="button" class="btn btn-secondary btn-sm" onclick="this.closest('.je-line').remove()">&times;</button>
       </div>
       {% endfor %}
+      {% endif %}
     </div>
     <button type="button" class="btn btn-secondary btn-sm" id="add-line">+ Add line</button>
   </div>
 
-  <button class="btn" type="submit">Create as draft</button>
+  <button class="btn" type="submit">{{ 'Save changes' if mode == 'edit' else 'Create as draft' }}</button>
 </form>
 
 <template id="line-template">

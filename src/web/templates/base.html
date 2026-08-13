@@ -32,6 +32,9 @@
     {% if request.query_params.get('flash') %}
       <div class="flash flash-{{ request.query_params.get('flash_kind', 'info') }}">{{ request.query_params.get('flash') }}</div>
     {% endif %}
+    {% if consolidation_stale %}
+      <div class="flash flash-warn">Adjustments changed since the last consolidation. Re-run Consolidate.</div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 </body>

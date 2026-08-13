@@ -55,6 +55,7 @@ h2 { font-size: 16px; margin: 0 0 12px; }
 .flash-info { background: var(--accent-wash); color: var(--accent-ink); }
 .flash-error { background: var(--negative-wash); color: var(--negative); }
 .flash-success { background: var(--good-wash); color: var(--good); }
+.flash-warn { background: var(--warn-wash); color: var(--warn); }
 
 .card {
   background: var(--surface); border: 1px solid var(--border); border-radius: 10px;

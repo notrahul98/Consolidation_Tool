@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 
 from src.db.repositories import adjustment_repo, entity_repo, group_coa_repo, period_repo
 from src.db.repositories.adjustment_repo import VALID_TYPES
-from src.engines.adjustment_engine import create_adjustment, copy_prior_month
+from src.engines.adjustment_engine import create_adjustment, copy_prior_month, update_adjustment
 from src.web.deps import get_db, templates
 
 router = APIRouter()
@@ -112,6 +112,113 @@ def create_adjustment_route(request: Request, period_str: str,
 
     return RedirectResponse(
         f"/periods/{period_str}/adjustments?flash=Created {external_ref} as draft&flash_kind=success",
+        status_code=303)
+
+
+@router.get("/periods/{period_str}/adjustments/{ref}/edit")
+def edit_adjustment_form(request: Request, period_str: str, ref: str, conn: sqlite3.Connection = Depends(get_db)):
+    period = period_repo.get_by_str(conn, period_str)
+    if period is None:
+        return RedirectResponse(f"/?flash=No such period&flash_kind=error", status_code=303)
+
+    adj = conn.execute(
+        "SELECT * FROM adjustments WHERE period_id = ? AND external_ref = ?",
+        (period["period_id"], ref),
+    ).fetchone()
+    if adj is None:
+        return RedirectResponse(
+            f"/periods/{period_str}/adjustments?flash=No adjustment {ref} found&flash_kind=error", status_code=303)
+
+    entities = entity_repo.list_all(conn)
+    categories = group_coa_repo.list_leaf_categories(conn)
+
+    lines = []
+    for l in adjustment_repo.get_lines(conn, adj["adjustment_id"]):
+        entity_code = ""
+        if l["entity_id"]:
+            e = conn.execute("SELECT entity_code FROM entities WHERE entity_id = ?", (l["entity_id"],)).fetchone()
+            entity_code = e["entity_code"] if e else ""
+        cat = group_coa_repo.get_by_id(conn, l["group_account_id"])
+        lines.append({
+            "entity_code": entity_code,
+            "category": cat["account_name"] if cat else "",
+            "debit": l["debit_amount"] or "",
+            "credit": l["credit_amount"] or "",
+        })
+
+    return templates.TemplateResponse(request, "adjustments_form.html", {
+        "request": request, "period_str": period_str, "entities": entities,
+        "categories": [c["account_name"] for c in categories], "types": sorted(VALID_TYPES),
+        "errors": [], "mode": "edit", "ref": ref,
+        "form": {"external_ref": adj["external_ref"], "adjustment_type": adj["adjustment_type"],
+                 "narration": adj["narration"]},
+        "lines": lines,
+    })
+
+
+@router.post("/periods/{period_str}/adjustments/{ref}/edit")
+def edit_adjustment_route(request: Request, period_str: str, ref: str,
+                            adjustment_type: str = Form(...), narration: str = Form(...),
+                            entity_code: list[str] = Form(default=[]),
+                            category: list[str] = Form(default=[]),
+                            debit: list[str] = Form(default=[]),
+                            credit: list[str] = Form(default=[]),
+                            conn: sqlite3.Connection = Depends(get_db)):
+    period = period_repo.get_by_str(conn, period_str)
+    if period is None:
+        return RedirectResponse(f"/?flash=No such period&flash_kind=error", status_code=303)
+
+    adj = conn.execute(
+        "SELECT * FROM adjustments WHERE period_id = ? AND external_ref = ?",
+        (period["period_id"], ref),
+    ).fetchone()
+    if adj is None:
+        return RedirectResponse(
+            f"/periods/{period_str}/adjustments?flash=No adjustment {ref} found&flash_kind=error", status_code=303)
+
+    entities = entity_repo.list_all(conn)
+    categories = group_coa_repo.list_leaf_categories(conn)
+    errors = []
+    lines = []
+    for i, (ecode, cat_name, dr, cr) in enumerate(zip(entity_code, category, debit, credit), start=1):
+        if not cat_name:
+            continue
+        cat = group_coa_repo.get_by_name(conn, cat_name)
+        if cat is None:
+            errors.append(f"Line {i}: unknown category '{cat_name}'")
+            continue
+        entity_id = None
+        if ecode:
+            e = entity_repo.get_by_code(conn, ecode)
+            if e is None:
+                errors.append(f"Line {i}: unknown entity '{ecode}'")
+                continue
+            entity_id = e["entity_id"]
+        lines.append({
+            "entity_id": entity_id, "group_account_id": cat["group_account_id"],
+            "debit_amount": float(dr or 0), "credit_amount": float(cr or 0),
+        })
+
+    if not errors:
+        try:
+            update_adjustment(conn, period["period_id"], adj["adjustment_id"], adjustment_type, narration,
+                                lines, user=getpass.getuser())
+            conn.commit()
+        except ValueError as e:
+            errors = str(e).split("\n")
+
+    if errors:
+        return templates.TemplateResponse(request, "adjustments_form.html", {
+            "request": request, "period_str": period_str, "entities": entities,
+            "categories": [c["account_name"] for c in categories], "types": sorted(VALID_TYPES),
+            "errors": errors, "mode": "edit", "ref": ref,
+            "form": {"external_ref": ref, "adjustment_type": adjustment_type, "narration": narration},
+            "lines": [{"entity_code": ec, "category": cn, "debit": dr, "credit": cr}
+                       for ec, cn, dr, cr in zip(entity_code, category, debit, credit)],
+        }, status_code=400)
+
+    return RedirectResponse(
+        f"/periods/{period_str}/adjustments?flash=Updated {ref} — back to draft. Apply it and re-run Consolidate.&flash_kind=success",
         status_code=303)
 
 

@@ -1,7 +1,9 @@
+import json
+
 import pytest
 
 from src.db.repositories import adjustment_repo, entity_repo, group_coa_repo, period_repo
-from src.engines.adjustment_engine import create_adjustment, copy_prior_month, validate
+from src.engines.adjustment_engine import create_adjustment, copy_prior_month, update_adjustment, validate
 from src.engines.consolidation_engine import consolidate_period
 from src.engines.validation_engine import run_all
 
@@ -192,3 +194,240 @@ def test_copy_prior_month_fails_with_no_prior_period(conn):
     conn.commit()
     with pytest.raises(ValueError, match="No prior period"):
         copy_prior_month(conn, period_id, user="test")
+
+
+# Workstream D — editing an already-applied adjustment
+
+def test_update_applied_adjustment_resets_to_draft(consolidated):
+    conn, period_id, _ = consolidated
+    lines = _sample_lines(conn, "KNS", 1000.0, "Bank Charges", "Travel Expense - Domestic")
+    create_adjustment(conn, period_id, "ADJ-TEST-EDIT", "other", "original narration", lines, user="test")
+    adjustment_repo.apply_all(conn, period_id, user="test")
+    conn.commit()
+
+    adj = conn.execute(
+        "SELECT * FROM adjustments WHERE period_id = ? AND external_ref = ?", (period_id, "ADJ-TEST-EDIT")
+    ).fetchone()
+    assert adj["status"] == "applied"
+
+    new_lines = _sample_lines(conn, "KNS", 2000.0, "Bank Charges", "Travel Expense - Domestic")
+    update_adjustment(conn, period_id, adj["adjustment_id"], "other", "edited narration", new_lines, user="test")
+    conn.commit()
+
+    updated = conn.execute(
+        "SELECT * FROM adjustments WHERE adjustment_id = ?", (adj["adjustment_id"],)
+    ).fetchone()
+    assert updated["status"] == "draft"
+    assert updated["narration"] == "edited narration"
+
+    updated_lines = adjustment_repo.get_lines(conn, adj["adjustment_id"])
+    assert sum(l["debit_amount"] for l in updated_lines) == pytest.approx(2000.0)
+
+
+def test_update_writes_before_and_after_to_audit_log(consolidated):
+    conn, period_id, _ = consolidated
+    lines = _sample_lines(conn, "KNS", 1000.0, "Bank Charges", "Travel Expense - Domestic")
+    create_adjustment(conn, period_id, "ADJ-TEST-AUDIT", "other", "before edit", lines, user="test")
+    conn.commit()
+
+    adj = conn.execute(
+        "SELECT * FROM adjustments WHERE period_id = ? AND external_ref = ?", (period_id, "ADJ-TEST-AUDIT")
+    ).fetchone()
+
+    new_lines = _sample_lines(conn, "KNS", 3000.0, "Bank Charges", "Travel Expense - Domestic")
+    update_adjustment(conn, period_id, adj["adjustment_id"], "other", "after edit", new_lines, user="test")
+    conn.commit()
+
+    audit_rows = conn.execute(
+        "SELECT * FROM audit_log WHERE table_name = 'adjustments' AND record_id = ? AND action = 'edit'",
+        (str(adj["adjustment_id"]),),
+    ).fetchall()
+    assert len(audit_rows) == 1
+    before = json.loads(audit_rows[0]["old_value"])
+    after = json.loads(audit_rows[0]["new_value"])
+
+    assert before["narration"] == "before edit"
+    assert after["narration"] == "after edit"
+    assert before["lines"][0]["debit"] == pytest.approx(1000.0) or before["lines"][1]["debit"] == pytest.approx(1000.0)
+    assert any(l["debit"] == pytest.approx(3000.0) for l in after["lines"])
+    assert before["external_ref"] == "ADJ-TEST-AUDIT"
+    assert after["external_ref"] == "ADJ-TEST-AUDIT"
+
+
+def test_update_rejects_unbalanced_lines(consolidated):
+    conn, period_id, _ = consolidated
+    lines = _sample_lines(conn, "KNS", 1000.0, "Bank Charges", "Travel Expense - Domestic")
+    create_adjustment(conn, period_id, "ADJ-TEST-BAL", "other", "narration", lines, user="test")
+    conn.commit()
+
+    adj = conn.execute(
+        "SELECT * FROM adjustments WHERE period_id = ? AND external_ref = ?", (period_id, "ADJ-TEST-BAL")
+    ).fetchone()
+
+    bad_lines = _sample_lines(conn, "KNS", 1000.0, "Bank Charges", "Travel Expense - Domestic")
+    bad_lines[1]["credit_amount"] = 500.0  # unbalance it
+    with pytest.raises(ValueError, match="does not balance"):
+        update_adjustment(conn, period_id, adj["adjustment_id"], "other", "narration", bad_lines, user="test")
+
+    # Original lines untouched
+    unchanged = adjustment_repo.get_lines(conn, adj["adjustment_id"])
+    assert sum(l["debit_amount"] for l in unchanged) == pytest.approx(1000.0)
+
+
+def test_update_blocked_on_locked_period(consolidated):
+    conn, period_id, _ = consolidated
+    lines = _sample_lines(conn, "KNS", 1000.0, "Bank Charges", "Travel Expense - Domestic")
+    create_adjustment(conn, period_id, "ADJ-TEST-LOCK", "other", "narration", lines, user="test")
+    conn.commit()
+
+    adj = conn.execute(
+        "SELECT * FROM adjustments WHERE period_id = ? AND external_ref = ?", (period_id, "ADJ-TEST-LOCK")
+    ).fetchone()
+
+    period_repo.lock(conn, period_id, user="test")
+    conn.commit()
+
+    new_lines = _sample_lines(conn, "KNS", 2000.0, "Bank Charges", "Travel Expense - Domestic")
+    with pytest.raises(ValueError, match="locked"):
+        update_adjustment(conn, period_id, adj["adjustment_id"], "other", "narration", new_lines, user="test")
+
+
+def test_update_cannot_change_external_ref(consolidated):
+    """update_adjustment always reads external_ref from the existing row — it doesn't
+    accept one as a parameter — so it's structurally impossible to rename via this path."""
+    conn, period_id, _ = consolidated
+    lines = _sample_lines(conn, "KNS", 1000.0, "Bank Charges", "Travel Expense - Domestic")
+    create_adjustment(conn, period_id, "ADJ-TEST-REF", "other", "narration", lines, user="test")
+    conn.commit()
+
+    adj = conn.execute(
+        "SELECT * FROM adjustments WHERE period_id = ? AND external_ref = ?", (period_id, "ADJ-TEST-REF")
+    ).fetchone()
+
+    new_lines = _sample_lines(conn, "KNS", 2000.0, "Bank Charges", "Travel Expense - Domestic")
+    update_adjustment(conn, period_id, adj["adjustment_id"], "other", "narration", new_lines, user="test")
+    conn.commit()
+
+    updated = conn.execute(
+        "SELECT * FROM adjustments WHERE adjustment_id = ?", (adj["adjustment_id"],)
+    ).fetchone()
+    assert updated["external_ref"] == "ADJ-TEST-REF"
+
+
+def test_edited_adjustment_changes_consolidated_tb_after_reapply_and_reconsolidate(consolidated):
+    conn, period_id, _ = consolidated
+    lines = _sample_lines(conn, "KNS", 100000.0, "Bank Charges", "Travel Expense - Domestic")
+    create_adjustment(conn, period_id, "ADJ-TEST-E2E", "reclassification", "original", lines, user="test")
+    adjustment_repo.apply_all(conn, period_id, user="test")
+    conn.commit()
+    consolidate_period(conn, period_id)
+    conn.commit()
+
+    adj = conn.execute(
+        "SELECT * FROM adjustments WHERE period_id = ? AND external_ref = ?", (period_id, "ADJ-TEST-E2E")
+    ).fetchone()
+    bank_charges = group_coa_repo.get_by_name(conn, "Bank Charges")
+    before_amount = conn.execute(
+        """SELECT SUM(closing_dr) - SUM(closing_cr) AS net FROM consolidated_tb
+           WHERE period_id = ? AND source_type = 'total' AND group_account_id = ?""",
+        (period_id, bank_charges["group_account_id"]),
+    ).fetchone()["net"]
+
+    # Edit to a different amount
+    new_lines = _sample_lines(conn, "KNS", 250000.0, "Bank Charges", "Travel Expense - Domestic")
+    update_adjustment(conn, period_id, adj["adjustment_id"], "reclassification", "edited", new_lines, user="test")
+    conn.commit()
+
+    # Re-apply and re-consolidate
+    adjustment_repo.apply_all(conn, period_id, user="test")
+    conn.commit()
+    consolidate_period(conn, period_id)
+    conn.commit()
+
+    after_amount = conn.execute(
+        """SELECT SUM(closing_dr) - SUM(closing_cr) AS net FROM consolidated_tb
+           WHERE period_id = ? AND source_type = 'total' AND group_account_id = ?""",
+        (period_id, bank_charges["group_account_id"]),
+    ).fetchone()["net"]
+
+    # Bank Charges is credited in both the original and edited adjustment (it's the
+    # credit_category argument to _sample_lines), so a larger credit further reduces
+    # the raw (closing_dr - closing_cr) total by the increase in amount.
+    assert after_amount == pytest.approx(before_amount - (250000.0 - 100000.0))
+
+
+def test_is_consolidation_stale_after_edit(consolidated):
+    conn, period_id, _ = consolidated
+    lines = _sample_lines(conn, "KNS", 1000.0, "Bank Charges", "Travel Expense - Domestic")
+    create_adjustment(conn, period_id, "ADJ-TEST-STALE", "other", "narration", lines, user="test")
+    adjustment_repo.apply_all(conn, period_id, user="test")
+    conn.commit()
+
+    consolidate_period(conn, period_id)
+    conn.commit()
+    assert period_repo.is_consolidation_stale(conn, period_id) is False
+
+    adj = conn.execute(
+        "SELECT * FROM adjustments WHERE period_id = ? AND external_ref = ?", (period_id, "ADJ-TEST-STALE")
+    ).fetchone()
+    new_lines = _sample_lines(conn, "KNS", 2000.0, "Bank Charges", "Travel Expense - Domestic")
+    update_adjustment(conn, period_id, adj["adjustment_id"], "other", "narration", new_lines, user="test")
+    conn.commit()
+
+    assert period_repo.is_consolidation_stale(conn, period_id) is True
+
+
+def test_is_consolidation_stale_false_after_reconsolidate(consolidated):
+    conn, period_id, _ = consolidated
+    lines = _sample_lines(conn, "KNS", 1000.0, "Bank Charges", "Travel Expense - Domestic")
+    create_adjustment(conn, period_id, "ADJ-TEST-STALE2", "other", "narration", lines, user="test")
+    adjustment_repo.apply_all(conn, period_id, user="test")
+    conn.commit()
+    consolidate_period(conn, period_id)
+    conn.commit()
+
+    adj = conn.execute(
+        "SELECT * FROM adjustments WHERE period_id = ? AND external_ref = ?", (period_id, "ADJ-TEST-STALE2")
+    ).fetchone()
+    new_lines = _sample_lines(conn, "KNS", 2000.0, "Bank Charges", "Travel Expense - Domestic")
+    update_adjustment(conn, period_id, adj["adjustment_id"], "other", "narration", new_lines, user="test")
+    conn.commit()
+    assert period_repo.is_consolidation_stale(conn, period_id) is True
+
+    adjustment_repo.apply_all(conn, period_id, user="test")
+    conn.commit()
+    consolidate_period(conn, period_id)
+    conn.commit()
+    assert period_repo.is_consolidation_stale(conn, period_id) is False
+
+
+def test_edit_form_renders_prefilled(consolidated):
+    from fastapi.testclient import TestClient
+    from src.web.app import app
+    from src.web.deps import get_db
+
+    conn, period_id, _ = consolidated
+    lines = _sample_lines(conn, "KNS", 1000.0, "Bank Charges", "Travel Expense - Domestic")
+    create_adjustment(conn, period_id, "ADJ-TEST-FORM", "other", "prefill me", lines, user="test")
+    conn.commit()
+
+    db_path = conn.execute("PRAGMA database_list").fetchone()["file"]
+
+    def override_get_db():
+        from src.db.database import connect
+        c = connect(db_path)
+        try:
+            yield c
+        finally:
+            c.close()
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        client = TestClient(app)
+        resp = client.get("/periods/2026-06/adjustments/ADJ-TEST-FORM/edit")
+        assert resp.status_code == 200
+        assert "prefill me" in resp.text
+        assert "ADJ-TEST-FORM" in resp.text
+        assert 'readonly' in resp.text
+    finally:
+        app.dependency_overrides.clear()
