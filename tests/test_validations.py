@@ -7,4 +7,4 @@ def test_all_phase1_checks_pass_on_real_data(consolidated):
     failed = [r for r in results if not r.passed]
     assert failed == [], f"Unexpected validation failures: {[(r.check_id, r.details) for r in failed]}"
     ids = {r.check_id for r in results}
-    assert ids == {"V1", "V3/V12", "V9", "V5", "V8", "V6", "V7", "V2", "V14", "V18"}
+    assert ids == {"V1", "V3/V12", "V9", "V5", "V8", "V6", "V7", "V2", "V14", "V18", "V19", "V20"}
