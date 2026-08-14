@@ -4,6 +4,7 @@ import { initBackupControls } from "./backup-controls.js";
 import { renderDashboardHome, renderPeriodDashboard } from "./pages/dashboard.js";
 import { renderImportTb } from "./pages/import-tb.js";
 import { renderMapping } from "./pages/mapping.js";
+import { renderStock } from "./pages/stock.js";
 import { renderConsolidatedTb } from "./pages/consolidated-tb.js";
 import { renderAdjustmentsList } from "./pages/adjustments-list.js";
 import { renderAdjustmentForm } from "./pages/adjustment-form.js";
@@ -32,6 +33,7 @@ async function main() {
   router.register("/periods/:period", renderPeriodDashboard);
   router.register("/periods/:period/import", renderImportTb);
   router.register("/periods/:period/mapping", renderMapping);
+  router.register("/periods/:period/stock", renderStock);
   router.register("/periods/:period/consolidated", renderConsolidatedTb);
   router.register("/periods/:period/adjustments/new", renderAdjustmentForm);
   router.register("/periods/:period/adjustments", renderAdjustmentsList);

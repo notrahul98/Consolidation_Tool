@@ -11,6 +11,7 @@ const MIGRATION_FILES = [
   "001_init.sql",
   "002_adjustments.sql",
   "003_inventory_movement_type.sql",
+  "004_stock_and_period_state.sql",
 ];
 
 let db = null;
