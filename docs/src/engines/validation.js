@@ -1,6 +1,7 @@
 // Port of src/engines/validation_engine.py
 import { persistence } from "../db/persistence.js";
 import { computePl, computeBs } from "./statements.js";
+import { run as reCheckRun } from "./re-check.js";
 
 const TOLERANCE_IDR = 1;
 const MATERIALITY_IDR = 0.0;
@@ -153,6 +154,102 @@ function v18LockedPeriodImmutable(periodId) {
   return result("V18", "Locked periods carry no unapplied draft adjustments", "Error", details.length === 0, details);
 }
 
+// Stock/COGS movement booked. Fails when the period has a non-zero Inventory balance and
+// either (a) no applied inventory_movement adjustment exists, or (b) one exists but its
+// amounts no longer match the current stock_movement figures (i.e. the figures were
+// edited after the adjustment was generated).
+function v19StockCogsBooked(periodId) {
+  const inventoryEntities = persistence.all(
+    `SELECT ctb.entity_id, e.entity_code,
+            SUM(ctb.closing_dr) - SUM(ctb.closing_cr) AS inventory_balance
+       FROM consolidated_tb ctb
+       JOIN entities e ON ctb.entity_id = e.entity_id
+       JOIN group_coa gc ON gc.group_account_id = ctb.group_account_id
+      WHERE ctb.period_id = ? AND gc.account_name = 'Inventory'
+            AND ctb.source_type = 'total'
+      GROUP BY ctb.entity_id
+     HAVING ABS(inventory_balance) > ?`,
+    [periodId, TOLERANCE_IDR]
+  );
+
+  if (inventoryEntities.length === 0) {
+    return result("V19", "Stock/COGS movement booked", "Warning", true, []);
+  }
+
+  const appliedAdj = persistence.get(
+    `SELECT adjustment_id FROM adjustments
+      WHERE period_id = ? AND adjustment_type = 'inventory_movement' AND status = 'applied'
+      LIMIT 1`,
+    [periodId]
+  );
+
+  if (!appliedAdj) {
+    const details = ["Period has non-zero Inventory but no applied stock adjustment"];
+    return result("V19", "Stock/COGS movement booked", "Warning", false, details);
+  }
+
+  const details = [];
+  for (const inv of inventoryEntities) {
+    const stock = persistence.get(
+      `SELECT opening_stock_auto, opening_stock_override, closing_stock_auto, closing_stock_override,
+              purchases_auto, purchases_override
+         FROM stock_movement WHERE period_id = ? AND entity_id = ?`,
+      [periodId, inv.entity_id]
+    );
+
+    if (!stock) {
+      details.push(`${inv.entity_code}: non-zero Inventory but no stock_movement row`);
+      continue;
+    }
+
+    const opening = stock.opening_stock_override !== null && stock.opening_stock_override !== undefined ? stock.opening_stock_override : stock.opening_stock_auto;
+    const closing = stock.closing_stock_override !== null && stock.closing_stock_override !== undefined ? stock.closing_stock_override : stock.closing_stock_auto;
+    if (opening === null || opening === undefined || closing === null || closing === undefined) continue;
+    const delta = opening - closing;
+
+    if (Math.abs(delta) > TOLERANCE_IDR) {
+      // Only the magnitude matters here (direction is already fixed by
+      // generateAdjustment's drawdown/buildup branches), so summing the signed
+      // debit-credit and comparing absolute values sidesteps needing to know
+      // Inventory's normal_balance direction.
+      const adjBalance = persistence.get(
+        `SELECT SUM(al.debit_amount - al.credit_amount) AS net
+           FROM adjustment_lines al
+           JOIN adjustments a ON al.adjustment_id = a.adjustment_id
+           JOIN group_coa gc ON al.group_account_id = gc.group_account_id
+          WHERE a.adjustment_id = ? AND al.entity_id = ? AND gc.account_name = 'Inventory'`,
+        [appliedAdj.adjustment_id, inv.entity_id]
+      );
+
+      if (!adjBalance || Math.abs(Math.abs(adjBalance.net || 0) - Math.abs(delta)) > TOLERANCE_IDR) {
+        details.push(`${inv.entity_code}: stock figures changed after adjustment generation`);
+      }
+    }
+  }
+
+  return result("V19", "Stock/COGS movement booked", "Warning", details.length === 0, details);
+}
+
+// Retained Earnings movement ties to prior period profit. Wraps re-check.run(). Detail
+// line per entity whose abs(gap) > TOLERANCE_IDR, plus a group-level line. Passes when
+// not applicable.
+function v20ReMovementTiesToPriorProfit(periodId) {
+  const reResult = reCheckRun(periodId);
+  if (!reResult.applicable) {
+    return result("V20", "Retained Earnings movement ties to prior period profit", "Warning", true, []);
+  }
+
+  const details = [];
+  for (const row of reResult.rows) {
+    if (Math.abs(row.gap) > TOLERANCE_IDR) {
+      const label = row.entityCode ? row.entityCode : "Group total";
+      details.push(`${label}: RE gap=${row.gap.toFixed(2)} (expected ${row.expected.toFixed(2)}, actual ${row.reClosingCurrent.toFixed(2)})`);
+    }
+  }
+
+  return result("V20", "Retained Earnings movement ties to prior period profit", "Warning", details.length === 0, details);
+}
+
 export function runAll(periodId) {
   return [
     v1EntityGrandTotalTies(periodId),
@@ -165,5 +262,7 @@ export function runAll(periodId) {
     v2AdjustmentsBalance(periodId),
     v14DraftAdjustments(periodId),
     v18LockedPeriodImmutable(periodId),
+    v19StockCogsBooked(periodId),
+    v20ReMovementTiesToPriorProfit(periodId),
   ];
 }

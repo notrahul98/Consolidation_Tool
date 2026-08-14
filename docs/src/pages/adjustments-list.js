@@ -52,6 +52,10 @@ export async function renderAdjustmentsList(mountEl, { period: periodStr }) {
 
   const refresh = () => {
     adjustments = buildAdjustments(period.period_id);
+    // Re-run so the stale-consolidation banner picks up changes from actions that mutate
+    // adjustments without a full page navigation (updateNav only runs automatically on
+    // route change, not on in-page state updates).
+    updateNav(periodStr);
   };
 
   const onApplyAll = (ev) => {
@@ -139,14 +143,19 @@ export async function renderAdjustmentsList(mountEl, { period: periodStr }) {
                       <span class="badge badge-${adj.status === "applied" ? "applied" : "draft"}">${adj.status}</span>
                       <span class="subtitle" style="display:inline;margin-left:8px">${adj.type}</span>
                     </div>
-                    <button
-                      class="btn btn-danger btn-sm"
-                      type="button"
-                      ?disabled=${period.status === "locked"}
-                      @click=${() => onDeleteClick(adj.ref)}
-                    >
-                      Delete
-                    </button>
+                    <div class="field-row">
+                      ${period.status !== "locked"
+                        ? html`<a class="btn btn-secondary btn-sm" href="#/periods/${periodStr}/adjustments/${adj.ref}/edit">Edit</a>`
+                        : ""}
+                      <button
+                        class="btn btn-danger btn-sm"
+                        type="button"
+                        ?disabled=${period.status === "locked"}
+                        @click=${() => onDeleteClick(adj.ref)}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                   ${pendingDeleteRef === adj.ref
                     ? html`<div class="flash flash-error">

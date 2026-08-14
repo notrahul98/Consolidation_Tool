@@ -60,3 +60,39 @@ export function unlock(periodId, user = null) {
   ]);
   auditLog("unlock", "periods", String(periodId), { user });
 }
+
+// Records both a human-readable timestamp and the current high-water mark of
+// audit_log.log_id. Staleness detection (below) uses the log_id marker, not the
+// timestamp — see migration 005 for why: wall-clock comparison is unreliable when
+// operations happen faster than clock resolution.
+export function markConsolidated(periodId) {
+  const row = persistence.get("SELECT COALESCE(MAX(log_id), 0) AS latest FROM audit_log");
+  persistence.run("UPDATE periods SET consolidated_at = ?, consolidated_through_log_id = ? WHERE period_id = ?", [
+    new Date().toISOString(),
+    row.latest,
+    periodId,
+  ]);
+}
+
+// True when an adjustment for this period has been created, edited, applied, or deleted
+// since the last successful consolidate. Compares the audit_log.log_id high-water mark
+// recorded at that consolidate against the newest audit_log.log_id for
+// table_name='adjustments' on that period's *current* adjustment ids — an adjustment
+// deleted after consolidation won't be caught by this (its id no longer resolves to the
+// period), which matches the source plan's described approach.
+export function isConsolidationStale(periodId) {
+  const period = persistence.get("SELECT consolidated_at, consolidated_through_log_id FROM periods WHERE period_id = ?", [periodId]);
+  if (!period || period.consolidated_at === null || period.consolidated_at === undefined) return false;
+
+  const adjustmentIds = persistence.all("SELECT adjustment_id FROM adjustments WHERE period_id = ?", [periodId]).map((r) => String(r.adjustment_id));
+  if (adjustmentIds.length === 0) return false;
+
+  const placeholders = adjustmentIds.map(() => "?").join(",");
+  const row = persistence.get(
+    `SELECT MAX(log_id) AS latest FROM audit_log WHERE table_name = 'adjustments' AND record_id IN (${placeholders})`,
+    adjustmentIds
+  );
+  if (!row || row.latest === null || row.latest === undefined) return false;
+
+  return row.latest > period.consolidated_through_log_id;
+}
