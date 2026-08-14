@@ -11,6 +11,7 @@ import { renderAdjustmentForm } from "./pages/adjustment-form.js";
 import { renderValidation } from "./pages/validation.js";
 import { renderPl, renderBs } from "./pages/statement.js";
 import { renderAuditLog } from "./pages/audit-log.js";
+import { renderRetainedEarnings } from "./pages/retained-earnings.js";
 
 const mount = document.getElementById("app");
 const statusEl = document.getElementById("boot-status");
@@ -36,10 +37,12 @@ async function main() {
   router.register("/periods/:period/stock", renderStock);
   router.register("/periods/:period/consolidated", renderConsolidatedTb);
   router.register("/periods/:period/adjustments/new", renderAdjustmentForm);
+  router.register("/periods/:period/adjustments/:ref/edit", renderAdjustmentForm);
   router.register("/periods/:period/adjustments", renderAdjustmentsList);
   router.register("/periods/:period/validation", renderValidation);
   router.register("/periods/:period/pl", renderPl);
   router.register("/periods/:period/bs", renderBs);
+  router.register("/periods/:period/retained-earnings", renderRetainedEarnings);
   router.register("/periods/:period/audit", renderAuditLog);
   router.setNotFound((el) => {
     el.innerHTML = `<div class="empty">Page not found.</div>`;

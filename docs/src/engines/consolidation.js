@@ -2,6 +2,7 @@
 // adjustments into the consolidated TB, mirroring the entity-columns + total matrix layout.
 import { persistence } from "../db/persistence.js";
 import * as consolidatedRepo from "../db/consolidated-repo.js";
+import * as periodRepo from "../db/period-repo.js";
 
 const MATERIALITY_IDR = 0.0; // any non-zero closing balance is "material" for blocking purposes
 
@@ -130,6 +131,8 @@ export function consolidatePeriod(periodId) {
     consolidatedRepo.insertRow(periodId, groupAccountId, null, odr, ocr, pdr, pcr, cdr, ccr, "total");
     rowsWritten++;
   }
+
+  periodRepo.markConsolidated(periodId);
 
   return { blocked: false, unmappedMaterial: [], rowsWritten };
 }

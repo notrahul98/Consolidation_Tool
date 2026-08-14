@@ -12,6 +12,7 @@ const MIGRATION_FILES = [
   "002_adjustments.sql",
   "003_inventory_movement_type.sql",
   "004_stock_and_period_state.sql",
+  "005_consolidation_log_marker.sql",
 ];
 
 let db = null;
