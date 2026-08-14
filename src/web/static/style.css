@@ -84,6 +84,7 @@ tr.section td { font-weight: 700; text-transform: uppercase; font-size: 12px; co
 .badge-locked { background: var(--surface-2); color: var(--ink-2); }
 .badge-draft { background: var(--warn-wash); color: var(--warn); }
 .badge-applied { background: var(--good-wash); color: var(--good); }
+.badge-info { background: var(--accent-wash); color: var(--accent-ink); }
 
 .btn {
   display: inline-block; background: var(--accent); color: #fff; border: none; border-radius: 7px;

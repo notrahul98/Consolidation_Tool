@@ -5,6 +5,7 @@ const NAV_LINKS = [
   ["", "Dashboard"],
   ["/import", "Import TB"],
   ["/mapping", "Mapping"],
+  ["/stock", "Stock"],
   ["/adjustments", "Adjustments"],
   ["/consolidated", "Consolidated TB"],
   ["/pl", "P&L"],
