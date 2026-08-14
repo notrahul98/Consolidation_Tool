@@ -224,10 +224,13 @@ def _v19_stock_cogs_booked(conn: sqlite3.Connection, period_id: int) -> Validati
         delta = opening - closing
 
         if abs(delta) > TOLERANCE_IDR:
-            # Check that adjustment lines match the delta
+            # Check that the applied adjustment's Inventory line magnitude matches the
+            # current delta. Only the magnitude matters here (direction is already fixed
+            # by generate_adjustment's drawdown/buildup branches), so summing the signed
+            # debit-credit and comparing absolute values sidesteps needing to know
+            # Inventory's normal_balance direction.
             adj_balance = conn.execute(
-                """SELECT SUM(CASE WHEN gc.normal_balance = 'Dr' THEN al.debit_amount - al.credit_amount
-                                  ELSE al.credit_amount - al.debit_amount END) AS net
+                """SELECT SUM(al.debit_amount - al.credit_amount) AS net
                    FROM adjustment_lines al
                    JOIN adjustments a ON al.adjustment_id = a.adjustment_id
                    JOIN group_coa gc ON al.group_account_id = gc.group_account_id
@@ -235,7 +238,7 @@ def _v19_stock_cogs_booked(conn: sqlite3.Connection, period_id: int) -> Validati
                 (applied_adj["adjustment_id"], inv["entity_id"]),
             ).fetchone()
 
-            if not adj_balance or abs((adj_balance["net"] or 0) - abs(delta)) > TOLERANCE_IDR:
+            if not adj_balance or abs(abs(adj_balance["net"] or 0) - abs(delta)) > TOLERANCE_IDR:
                 details.append(f"{inv['entity_code']}: stock figures changed after adjustment generation")
 
     return ValidationResult("V19", "Stock/COGS movement booked", "Warning", not details, details)
