@@ -304,3 +304,36 @@ def test_stock_row_properties_compute_correctly(conn):
     assert kns_row.purchases == 500000.0
     assert kns_row.delta == 1000000.0  # opening - closing
     assert kns_row.computed_cogs == 1500000.0  # opening + purchases - closing
+
+
+def test_v19_passes_after_matching_buildup_adjustment_applied(conn):
+    """Regression: V19 previously compared gc.normal_balance to 'Dr' (mixed case) against
+    a column that only ever stores 'DR'/'CR', so the comparison always fell through to the
+    wrong branch for a stock buildup (opening < closing) — incorrectly flagging 'stock
+    figures changed' even when the applied adjustment exactly matched. Drawdown happened to
+    read correctly, which is why this went unnoticed until fixed and tested explicitly."""
+    from src.db.repositories import adjustment_repo
+    from src.engines.consolidation_engine import consolidate_period
+    from src.engines.validation_engine import _v19_stock_cogs_booked
+
+    period_id = import_all_entities(conn)
+    categorize_all(conn)
+    consolidate_period(conn, period_id)
+    conn.commit()
+
+    stock_rows = stock_engine.refresh(conn, period_id)
+    kns_row = next(r for r in stock_rows if r.entity_code == "KNS")
+
+    # Buildup: opening < closing
+    stock_engine.save_overrides(conn, period_id, kns_row.entity_id, opening=1000000.0, closing=2000000.0, user="test")
+    conn.commit()
+
+    stock_engine.generate_adjustment(conn, period_id, "TEST-V19-BUILDUP", user="test")
+    adjustment_repo.apply_all(conn, period_id, user="test")
+    conn.commit()
+    consolidate_period(conn, period_id)
+    conn.commit()
+
+    v19 = _v19_stock_cogs_booked(conn, period_id)
+    assert v19.passed is True
+    assert v19.details == []
