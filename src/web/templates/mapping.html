@@ -26,14 +26,18 @@
           {% if row.is_parent %}
           <tr class="parent-row">
             <td><strong>{{ row.ledger_name }}</strong></td>
-            <td colspan="4"><span class="badge badge-warn">{{ row.badge }}</span></td>
+            <td></td>
+            <td></td>
             <td class="num {{ 'neg' if row.total_balance < 0 }}"><strong>{{ row.total_balance | idr }}</strong></td>
+            <td><span class="badge badge-warn">{{ row.badge }}</span></td>
+            <td></td>
           </tr>
           {% elif row.is_child %}
           <tr class="child-row" style="background: #fafafa;">
-            <td style="padding-left: 2em;">→ {{ row.entity_code }}</td>
+            <td style="padding-left: 2em;">↳</td>
+            <td>{{ row.entity_code }}</td>
             <td>{{ row.primary_group }}</td>
-            <td colspan="2" class="num {{ 'neg' if row.balance < 0 }}">{{ row.balance | idr }}</td>
+            <td class="num {{ 'neg' if row.balance < 0 }}">{{ row.balance | idr }}</td>
             <td></td>
             <td>
               <input type="hidden" name="ledger_name" value="{{ row.ledger_name }}">

@@ -21,6 +21,86 @@ export function ensureRowsExist(periodId) {
   }
 }
 
+// Port of mapping_repo.ledger_rows_for_period. One row per ledger name WITH its per-entity
+// breakdown — the shape the mapping UI needs, because entity_coa_mapping is keyed
+// (entity_id, entity_ledger_name) and the same ledger name is legitimately booked to
+// different categories in different entities (e.g. "12% Interest on Shareholders Loan A/c"
+// is an expense in VKS and a liability in KDI).
+//
+// needs_split is the switch the page renders on: once true, that ledger is ONLY ever
+// editable per entity, and a whole-ledger write against it is refused. Collapsing it back
+// to one dropdown is what silently overwrote every entity's mapping.
+export function ledgerRowsForPeriod(periodId) {
+  const rows = persistence.all(
+    `SELECT tbl.entity_ledger_name, tbl.tally_primary_group, tbi.entity_id,
+            e.entity_code, ecm.group_account_id, ecm.mapping_status,
+            (tbl.closing_dr - tbl.closing_cr) AS closing_balance,
+            gca.account_name
+       FROM trial_balance_lines tbl
+       JOIN trial_balance_imports tbi ON tbl.import_id = tbi.import_id
+       JOIN entities e ON tbi.entity_id = e.entity_id
+       LEFT JOIN entity_coa_mapping ecm
+              ON ecm.entity_id = tbi.entity_id AND ecm.entity_ledger_name = tbl.entity_ledger_name
+       LEFT JOIN group_coa gca ON ecm.group_account_id = gca.group_account_id
+      WHERE tbi.period_id = ?
+      ORDER BY tbl.entity_ledger_name, e.entity_code`,
+    [periodId]
+  );
+
+  const byName = new Map();
+  for (const r of rows) {
+    if (!byName.has(r.entity_ledger_name)) {
+      byName.set(r.entity_ledger_name, {
+        ledgerName: r.entity_ledger_name,
+        entities: [],
+        primaryGroups: new Set(),
+        categoryIds: new Set(),
+        totalBalance: 0.0,
+      });
+    }
+    const entry = byName.get(r.entity_ledger_name);
+    entry.entities.push({
+      entityId: r.entity_id,
+      entityCode: r.entity_code,
+      primaryGroup: r.tally_primary_group || "",
+      balance: r.closing_balance || 0.0,
+      categoryId: r.group_account_id,
+      categoryName: r.account_name,
+    });
+    if (r.tally_primary_group) entry.primaryGroups.add(r.tally_primary_group);
+    if (r.group_account_id) entry.categoryIds.add(r.group_account_id);
+    entry.totalBalance += r.closing_balance || 0.0;
+  }
+
+  const result = [];
+  for (const entry of byName.values()) {
+    const distinctCategories = entry.categoryIds.size;
+    const distinctPrimaryGroups = entry.primaryGroups.size;
+    const needsSplit = distinctPrimaryGroups > 1 || distinctCategories > 1;
+
+    let uniformCategory = null;
+    if (distinctCategories === 1) {
+      for (const ent of entry.entities) {
+        if (ent.categoryName) {
+          uniformCategory = ent.categoryName;
+          break;
+        }
+      }
+    }
+
+    result.push({
+      ledgerName: entry.ledgerName,
+      entities: entry.entities,
+      totalBalance: entry.totalBalance,
+      distinctCategories,
+      distinctPrimaryGroups,
+      needsSplit,
+      uniformCategory,
+    });
+  }
+  return result;
+}
+
 // One row per distinct ledger name across all entities.
 export function distinctLedgersForPeriod(periodId) {
   const rows = persistence.all(
