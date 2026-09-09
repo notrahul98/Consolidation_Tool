@@ -20,20 +20,10 @@ function key(groupAccountId, entityId) {
 
 function buildRows(periodId, entities) {
   const coaRows = groupCoaRepo.listAll();
-  const matrix = consolidatedRepo.getMatrix(periodId);
-  // A given (account, entity) can have BOTH an entity_tb row and an entity-specific
-  // adjustment row — they must be summed, not overwritten, or the base TB value silently
-  // disappears from that entity's cell whenever an adjustment targets it directly.
-  const byAccountEntity = new Map();
-  const adjByAccount = new Map(); // group_account_id -> sum of adjustment-source closing dr-cr, across all entities
-  for (const r of matrix) {
-    const k = key(r.group_account_id, r.entity_id);
-    const signed = (r.closing_dr || 0) - (r.closing_cr || 0);
-    byAccountEntity.set(k, (byAccountEntity.get(k) || 0) + signed);
-    if (r.source_type === "adjustment") {
-      adjByAccount.set(r.group_account_id, (adjByAccount.get(r.group_account_id) || 0) + signed);
-    }
-  }
+  // Entity columns carry that entity's TB plus any adjustment booked against it; the
+  // Adjustments column carries only group-level adjustments (which belong to no entity);
+  // Total comes straight from the 'total' row, the same figure the P&L and BS read.
+  const { byAccountEntity, groupAdjustment, total: totalByAccount } = consolidatedRepo.getBuckets(periodId);
 
   const rows = [];
   for (const row of coaRows) {
@@ -41,10 +31,10 @@ function buildRows(periodId, entities) {
       const v = byAccountEntity.get(key(row.group_account_id, e.entity_id));
       return v === undefined ? null : v;
     });
-    const totalV = byAccountEntity.get(key(row.group_account_id, null));
+    const totalV = totalByAccount.get(row.group_account_id);
     const total = totalV === undefined ? null : totalV;
     if (row.is_header && total === null && !entityValues.some((v) => v !== null)) continue;
-    const adjustment = adjByAccount.has(row.group_account_id) ? adjByAccount.get(row.group_account_id) : null;
+    const adjustment = groupAdjustment.has(row.group_account_id) ? groupAdjustment.get(row.group_account_id) : null;
     rows.push({ code: row.account_code, name: row.account_name, isHeader: !!row.is_header, entityValues, adjustment, total });
   }
   return rows;
@@ -83,7 +73,11 @@ export async function renderConsolidatedTb(mountEl, { period: periodStr }) {
     render(
       html`
         <h1>Consolidated Trial Balance</h1>
-        <p class="subtitle">Raw Dr-positive signed balances (matches Conso_TB_Matrix in the Excel pack), not statement-display sign.</p>
+        <p class="subtitle">
+          Raw Dr-positive signed balances (matches Conso_TB_Matrix in the Excel pack), not statement-display sign.
+          Entity columns already include adjustments booked against that entity; the Adjustments column holds only
+          group-level ones, so every row reads across as entities + adjustments = total.
+        </p>
 
         ${flash ? html`<div class="flash flash-${flash.kind}">${flash.message}</div>` : ""}
 

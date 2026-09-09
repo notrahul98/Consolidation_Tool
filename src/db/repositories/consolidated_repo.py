@@ -18,6 +18,42 @@ def insert_row(conn: sqlite3.Connection, period_id: int, group_account_id: int, 
     )
 
 
+def get_buckets(conn: sqlite3.Connection, period_id: int) -> tuple[dict, dict, dict]:
+    """The single aggregation of consolidated_tb used by BOTH the Consolidated TB page and
+    the Excel pack, so the screen and the workbook cannot drift apart.
+
+    Returns (by_account_entity, group_adjustment, total):
+      by_account_entity[(group_account_id, entity_id)]
+          that entity's TB plus any adjustment booked directly against that entity, summed
+          (never overwritten — see the entity+adjustment bug in HANDOVER.md §9.6).
+      group_adjustment[group_account_id]
+          adjustments carrying no entity. They belong to no entity column, so they have to
+          be added on top of the entity columns to reach the total.
+      total[group_account_id]
+          the authoritative 'total' row — the same figure compute_pl/compute_bs read.
+
+    The trap this exists to close: group-level adjustment rows and 'total' rows BOTH carry
+    entity_id IS NULL, so bucketing by entity_id alone silently merges them. Separate by
+    source_type first, always.
+    """
+    by_account_entity: dict[tuple[int, int | None], float] = {}
+    group_adjustment: dict[int, float] = {}
+    total: dict[int, float] = {}
+
+    for r in get_matrix(conn, period_id):
+        account_id = r["group_account_id"]
+        signed = (r["closing_dr"] or 0) - (r["closing_cr"] or 0)
+        if r["source_type"] == "total":
+            total[account_id] = total.get(account_id, 0.0) + signed
+        elif r["source_type"] == "adjustment" and r["entity_id"] is None:
+            group_adjustment[account_id] = group_adjustment.get(account_id, 0.0) + signed
+        else:
+            key = (account_id, r["entity_id"])
+            by_account_entity[key] = by_account_entity.get(key, 0.0) + signed
+
+    return by_account_entity, group_adjustment, total
+
+
 def get_matrix(conn: sqlite3.Connection, period_id: int) -> list[sqlite3.Row]:
     return conn.execute(
         """SELECT ctb.*, gc.account_code, gc.account_name, gc.statement_type, gc.section,

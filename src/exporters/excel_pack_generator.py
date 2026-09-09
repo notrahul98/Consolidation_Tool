@@ -5,8 +5,10 @@ Every derived cell is a live Excel formula, not a static value, so the workbook 
 traceable directly in Excel (click a cell, see where it comes from):
 
     Entity_<CODE> sheets (base data, from the DB)
-        -> Conso_TB_Matrix (entity columns reference Entity_<CODE>; Total = SUM across entities)
-            -> Conso_TB_Total (Total column references Conso_TB_Matrix's Total column)
+        -> Conso_TB_Matrix (entity columns reference Entity_<CODE>; Adjustments holds
+           GROUP-LEVEL adjustments only; Total = SUM across the entity columns AND
+           the Adjustments column)
+            -> Conso_TB_Total (Adjustments/Total columns reference Conso_TB_Matrix's own)
                 -> PL_Current / BS_Current (leaves reference Conso_TB_Total; subtotals are
                    SUM/arithmetic formulas over rows within the same sheet; BS_Current's
                    Retained Earnings cross-references PL_Current's Net Income row directly,
@@ -15,7 +17,9 @@ traceable directly in Excel (click a cell, see where it comes from):
 statement_generator.py's compute_pl/compute_bs (numeric, not formulas) remain the source of
 truth for the validation engine — this module's formulas are built to mirror that logic
 exactly and are checked against it via LibreOffice recalculation, not by sharing code, since
-one writes Python values and the other writes Excel formula strings.
+one writes Python values and the other writes Excel formula strings. tests/test_excel_pack.py
+evaluates the whole chain and diffs it against compute_pl/compute_bs, which is what catches a
+drift like the Total column silently excluding group-level adjustments.
 """
 
 import sqlite3
@@ -65,14 +69,11 @@ def _write_entity_sheets(wb, conn, period_id):
     Conso_TB_Matrix can reference them by cell, not by re-deriving the value."""
     entities = entity_repo.list_all(conn)
     coa_leaves = group_coa_repo.list_leaf_categories(conn)
-    matrix = consolidated_repo.get_matrix(conn, period_id)
-    # A given (account, entity) can have BOTH an entity_tb row and an entity-specific
-    # adjustment row — sum them, don't just keep the last one, or the base TB value
-    # silently disappears from that entity's cell whenever an adjustment targets it.
-    by_account_entity: dict[tuple[int, int | None], float] = {}
-    for r in matrix:
-        key = (r["group_account_id"], r["entity_id"])
-        by_account_entity[key] = by_account_entity.get(key, 0.0) + (r["closing_dr"] or 0) - (r["closing_cr"] or 0)
+    # Shared with the Consolidated TB page. Each entity's cell is its TB plus any adjustment
+    # booked against that entity, summed (see HANDOVER.md §9.6). Group-level adjustments are
+    # deliberately NOT here — they belong to no entity and are carried by the matrix's own
+    # Adjustments column instead.
+    by_account_entity, _, _ = consolidated_repo.get_buckets(conn, period_id)
 
     entity_row: dict[str, dict[str, int]] = {}
     for e in entities:
@@ -96,19 +97,36 @@ def _write_entity_sheets(wb, conn, period_id):
     return entity_row
 
 
-def _write_matrix_and_total(wb, conn, coa_rows, entities, entity_row):
-    """Conso_TB_Matrix: entity columns formula-reference Entity_<CODE> sheets; Total column
-    is a SUM formula across the entity columns in that row. Conso_TB_Total mirrors the same
-    row layout and formula-references Conso_TB_Matrix's own Total column."""
+def _write_matrix_and_total(wb, conn, period_id, coa_rows, entities, entity_row):
+    """Conso_TB_Matrix: entity columns formula-reference Entity_<CODE> sheets; Adjustments is
+    a static column holding GROUP-LEVEL adjustments only (there's no per-entity "Entity_ADJ"
+    sheet to formula-reference, so this one column is a computed value rather than a
+    cross-sheet formula). Total is a SUM formula across the entity columns AND the
+    Adjustments column. Conso_TB_Total mirrors the same row layout and formula-references
+    Conso_TB_Matrix's own Adjustments and Total columns.
+
+    The Adjustments column must be group-level only, and the Total must span it:
+      * entity-specific adjustments are already inside the Entity_<CODE> sheets, so counting
+        them here as well would double them;
+      * group-level adjustments live in no entity column at all, so leaving them outside the
+        SUM drops them from the workbook entirely — the Balance Sheet then disagrees with the
+        tool while Total Assets, Total Liabilities and Equity, and Check all still tie,
+        because a balanced group-level journal hides inside the totals.
+    """
+    _, group_adjustment, _ = consolidated_repo.get_buckets(conn, period_id)
+
     ws = wb.create_sheet("Conso_TB_Matrix")
-    header = ["Account Code", "Account Name", "Section"] + [e["entity_code"] for e in entities] + ["Total"]
+    header = ["Account Code", "Account Name", "Section"] + [e["entity_code"] for e in entities] \
+        + ["Adjustments", "Total"]
     ws.append(header)
     for c in ws[1]:
         c.font = BOLD
     ws.freeze_panes = "D2"
 
     entity_start_col = 4
-    total_col = entity_start_col + len(entities)
+    adj_col = entity_start_col + len(entities)
+    total_col = adj_col + 1
+    adj_col_letter = get_column_letter(adj_col)
     total_col_letter = get_column_letter(total_col)
 
     code_row: dict[str, int] = {}
@@ -124,20 +142,24 @@ def _write_matrix_and_total(wb, conn, coa_rows, entities, entity_row):
                 if entity_sheet_row:
                     cell.value = f"='Entity_{e['entity_code']}'!D{entity_sheet_row}"
                 cell.number_format = IDR_FORMAT
+            adj_cell = ws.cell(row=r, column=adj_col)
+            adj_cell.value = group_adjustment.get(row["group_account_id"]) or None
+            adj_cell.number_format = IDR_FORMAT
+
+            # Spans the entity columns THROUGH the Adjustments column — see the note above.
             first_letter = get_column_letter(entity_start_col)
-            last_letter = get_column_letter(entity_start_col + len(entities) - 1)
-            ws.cell(row=r, column=total_col, value=f"=SUM({first_letter}{r}:{last_letter}{r})")
+            ws.cell(row=r, column=total_col, value=f"=SUM({first_letter}{r}:{adj_col_letter}{r})")
             ws.cell(row=r, column=total_col).number_format = IDR_FORMAT
         else:
             for c in ws[r]:
                 c.font = BOLD
 
-    widths = [12, 40, 20] + [14] * (len(entities) + 1)
+    widths = [12, 40, 20] + [14] * (len(entities) + 2)
     for i, w in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(i)].width = w
 
     ws_total = wb.create_sheet("Conso_TB_Total")
-    ws_total.append(["Account Code", "Account Name", "Section", "Total"])
+    ws_total.append(["Account Code", "Account Name", "Section", "Adjustments", "Total"])
     for c in ws_total[1]:
         c.font = BOLD
     ws_total.freeze_panes = "D2"
@@ -146,12 +168,14 @@ def _write_matrix_and_total(wb, conn, coa_rows, entities, entity_row):
         r = ws_total.max_row
         assert r == code_row[row["account_code"]], "Conso_TB_Total must mirror Conso_TB_Matrix row-for-row"
         if not row["is_header"]:
-            ws_total.cell(row=r, column=4, value=f"='Conso_TB_Matrix'!{total_col_letter}{r}")
+            ws_total.cell(row=r, column=4, value=f"='Conso_TB_Matrix'!{adj_col_letter}{r}")
             ws_total.cell(row=r, column=4).number_format = IDR_FORMAT
+            ws_total.cell(row=r, column=5, value=f"='Conso_TB_Matrix'!{total_col_letter}{r}")
+            ws_total.cell(row=r, column=5).number_format = IDR_FORMAT
         else:
             for c in ws_total[r]:
                 c.font = BOLD
-    for i, w in enumerate([12, 40, 20, 16], start=1):
+    for i, w in enumerate([12, 40, 20, 16, 16], start=1):
         ws_total.column_dimensions[get_column_letter(i)].width = w
 
     return code_row
@@ -201,7 +225,7 @@ def _leaf_ref(name, name_to_leaf, code_row, positive_override=False):
     info = name_to_leaf[name]
     row = code_row[info["account_code"]]
     negate = (info["normal_balance"] == "CR") and not positive_override
-    ref = f"'Conso_TB_Total'!D{row}"
+    ref = f"'Conso_TB_Total'!E{row}"
     return f"-{ref}" if negate else ref
 
 
@@ -479,7 +503,7 @@ def export_pack(conn: sqlite3.Connection, period_id: int, out_path: str) -> None
     wb.remove(wb.active)
     _write_summary(wb, conn, period_id, period_label, validations)
     entity_row = _write_entity_sheets(wb, conn, period_id)
-    code_row = _write_matrix_and_total(wb, conn, coa_rows, entities, entity_row)
+    code_row = _write_matrix_and_total(wb, conn, period_id, coa_rows, entities, entity_row)
     net_income_row = _write_pl_sheet(wb, conn, name_to_leaf, code_row)
     _write_bs_sheet(wb, conn, name_to_leaf, code_row, net_income_row)
     _write_adjustments_sheet(wb, conn, period_id)

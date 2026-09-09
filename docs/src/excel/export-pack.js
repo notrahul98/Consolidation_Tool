@@ -2,8 +2,9 @@
 // formula, not a static value, so the workbook is traceable directly in Excel:
 //
 //   Entity_<CODE> sheets (base data, from the DB)
-//     -> Conso_TB_Matrix (entity columns reference Entity_<CODE>; Total = SUM across entities)
-//       -> Conso_TB_Total (Total column references Conso_TB_Matrix's Total column)
+//     -> Conso_TB_Matrix (entity columns reference Entity_<CODE>; Adjustments holds
+//        GROUP-LEVEL adjustments only; Total = SUM across the entity columns AND Adjustments)
+//       -> Conso_TB_Total (Adjustments/Total columns reference Conso_TB_Matrix's own)
 //         -> PL_Current / BS_Current (leaves reference Conso_TB_Total; subtotals are
 //            SUM/arithmetic formulas over rows within the same sheet; BS_Current's
 //            Retained Earnings cross-references PL_Current's Net Income row directly)
@@ -56,14 +57,11 @@ function writeSummary(wb, periodId, periodLabel, validations) {
 function writeEntitySheets(wb, periodId) {
   const entities = entityRepo.listAll();
   const coaLeaves = groupCoaRepo.listLeafCategories();
-  const matrix = consolidatedRepo.getMatrix(periodId);
-  // A given (account, entity) can have BOTH an entity_tb row and an entity-specific
-  // adjustment row — sum them, don't just keep the last one.
-  const byAccountEntity = new Map();
-  for (const r of matrix) {
-    const key = `${r.group_account_id}:${r.entity_id ?? "null"}`;
-    byAccountEntity.set(key, (byAccountEntity.get(key) || 0) + (r.closing_dr || 0) - (r.closing_cr || 0));
-  }
+  // Shared with the Consolidated TB page. Each entity's cell is its TB plus any adjustment
+  // booked against that entity, summed (see HANDOVER.md §9.6). Group-level adjustments are
+  // deliberately NOT here — they belong to no entity and are carried by the matrix's own
+  // Adjustments column instead.
+  const { byAccountEntity } = consolidatedRepo.getBuckets(periodId);
 
   const entityRow = {};
   for (const e of entities) {
@@ -85,22 +83,21 @@ function writeEntitySheets(wb, periodId) {
 }
 
 // Conso_TB_Matrix: entity columns formula-reference Entity_<CODE> sheets; Adjustments is a
-// static column (sum of adjustment-source rows for that account, across all entities and
-// group-level ones — same aggregation as the live Consolidated TB page's Adjustments column
-// and the Adj_Bridge sheet; there's no per-entity "Entity_ADJ" sheet to formula-reference,
-// so this one column is a computed value rather than a cross-sheet formula). Total column is
-// a SUM formula across the entity columns in that row. Conso_TB_Total mirrors the same row
-// layout and formula-references Conso_TB_Matrix's own Adjustments and Total columns.
+// static column holding GROUP-LEVEL adjustments only (there's no per-entity "Entity_ADJ"
+// sheet to formula-reference, so this one column is a computed value rather than a
+// cross-sheet formula). Total is a SUM formula across the entity columns AND the
+// Adjustments column. Conso_TB_Total mirrors the same row layout and formula-references
+// Conso_TB_Matrix's own Adjustments and Total columns.
+//
+// The Adjustments column must be group-level only, and the Total must span it:
+//   * entity-specific adjustments are already inside the Entity_<CODE> sheets, so counting
+//     them here as well would double them;
+//   * group-level adjustments live in no entity column at all, so leaving them outside the
+//     SUM drops them from the workbook entirely — the Balance Sheet then disagrees with the
+//     tool while Total Assets, Total Liabilities and Equity, and Check all still tie,
+//     because a balanced group-level journal hides inside the totals.
 function writeMatrixAndTotal(wb, periodId, coaRows, entities, entityRow) {
-  // Sum of adjustment-source closing dr-cr per account, regardless of entity (so group-level
-  // adjustments, which have no entity_id, are still captured here even though they don't
-  // land in any single entity's column).
-  const adjByAccount = new Map();
-  for (const r of consolidatedRepo.getMatrix(periodId)) {
-    if (r.source_type === "adjustment") {
-      adjByAccount.set(r.group_account_id, (adjByAccount.get(r.group_account_id) || 0) + (r.closing_dr || 0) - (r.closing_cr || 0));
-    }
-  }
+  const { groupAdjustment } = consolidatedRepo.getBuckets(periodId);
 
   const ws = wb.addWorksheet("Conso_TB_Matrix");
   const header = ["Account Code", "Account Name", "Section", ...entities.map((e) => e.entity_code), "Adjustments", "Total"];
@@ -130,13 +127,13 @@ function writeMatrixAndTotal(wb, periodId, coaRows, entities, entityRow) {
         cell.numFmt = IDR_FORMAT;
       });
       const adjCell = ws.getRow(r).getCell(adjCol);
-      adjCell.value = adjByAccount.get(row.group_account_id) || null;
+      adjCell.value = groupAdjustment.get(row.group_account_id) || null;
       adjCell.numFmt = IDR_FORMAT;
 
+      // Spans the entity columns THROUGH the Adjustments column — see the note above.
       const firstLetter = colLetter(entityStartCol);
-      const lastLetter = colLetter(entityStartCol + entities.length - 1);
       const totalCell = ws.getRow(r).getCell(totalCol);
-      totalCell.value = { formula: `SUM(${firstLetter}${r}:${lastLetter}${r})` };
+      totalCell.value = { formula: `SUM(${firstLetter}${r}:${adjColLetter}${r})` };
       totalCell.numFmt = IDR_FORMAT;
     } else {
       ws.getRow(r).eachCell((c) => (c.font = BOLD));

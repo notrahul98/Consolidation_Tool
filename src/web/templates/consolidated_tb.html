@@ -2,7 +2,9 @@
 {% block title %}Consolidated TB{% endblock %}
 {% block content %}
 <h1>Consolidated Trial Balance</h1>
-<p class="subtitle">Raw Dr-positive signed balances (matches Conso_TB_Matrix in the Excel pack), not statement-display sign.</p>
+<p class="subtitle">Raw Dr-positive signed balances (matches Conso_TB_Matrix in the Excel pack), not statement-display sign.
+Entity columns already include adjustments booked against that entity; the Adjustments column holds only group-level
+ones, so every row reads across as entities + adjustments = total.</p>
 
 <form method="post" action="/periods/{{ period_str }}/consolidated/recalculate" style="margin-bottom:16px">
   <button class="btn" type="submit">Recalculate</button>
@@ -15,6 +17,7 @@
       <tr>
         <th>Code</th><th>Account</th>
         {% for e in entities %}<th class="num-col">{{ e.entity_code }}</th>{% endfor %}
+        <th class="num-col">Adjustments</th>
         <th class="num-col">Total</th>
       </tr>
     </thead>
@@ -24,6 +27,7 @@
         <td class="num">{{ row.code }}</td>
         <td>{{ row.name }}</td>
         {% for v in row.entity_values %}<td class="num {{ 'neg' if v and v < 0 }}">{{ v | idr }}</td>{% endfor %}
+        <td class="num {{ 'neg' if row.adjustment and row.adjustment < 0 }}">{{ row.adjustment | idr }}</td>
         <td class="num {{ 'neg' if row.total and row.total < 0 }}">{{ row.total | idr }}</td>
       </tr>
       {% endfor %}

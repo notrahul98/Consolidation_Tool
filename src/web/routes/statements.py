@@ -19,24 +19,22 @@ def consolidated_tb(request: Request, period_str: str, conn: sqlite3.Connection 
 
     entities = entity_repo.list_all(conn)
     coa_rows = group_coa_repo.list_all(conn)
-    matrix = consolidated_repo.get_matrix(conn, period["period_id"])
-    # A given (account, entity) can have BOTH an entity_tb row and an entity-specific
-    # adjustment row — sum them, don't just keep the last one, or the base TB value
-    # silently disappears from that entity's cell whenever an adjustment targets it.
-    by_account_entity: dict[tuple[int, int | None], float] = {}
-    for r in matrix:
-        key = (r["group_account_id"], r["entity_id"])
-        by_account_entity[key] = by_account_entity.get(key, 0.0) + (r["closing_dr"] or 0) - (r["closing_cr"] or 0)
+    # Entity columns carry that entity's TB plus any adjustment booked against it; the
+    # Adjustments column carries only group-level adjustments (which belong to no entity);
+    # Total comes straight from the 'total' row, the same figure the P&L and BS read.
+    by_account_entity, group_adjustment, total_by_account = consolidated_repo.get_buckets(
+        conn, period["period_id"])
 
     rows = []
     for row in coa_rows:
         entity_values = [by_account_entity.get((row["group_account_id"], e["entity_id"])) for e in entities]
-        total = by_account_entity.get((row["group_account_id"], None))
+        adjustment = group_adjustment.get(row["group_account_id"])
+        total = total_by_account.get(row["group_account_id"])
         if row["is_header"] and total is None and not any(v is not None for v in entity_values):
             continue
         rows.append({
             "code": row["account_code"], "name": row["account_name"], "is_header": row["is_header"],
-            "entity_values": entity_values, "total": total,
+            "entity_values": entity_values, "adjustment": adjustment, "total": total,
         })
 
     return templates.TemplateResponse(request, "consolidated_tb.html", {

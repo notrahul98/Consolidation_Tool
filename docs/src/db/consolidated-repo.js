@@ -38,3 +38,40 @@ export function getMatrix(periodId) {
     [periodId]
   );
 }
+
+// The single aggregation of consolidated_tb used by BOTH the Consolidated TB page and the
+// Excel pack, so the screen and the workbook cannot drift apart.
+//
+//   byAccountEntity  "<accountId>:<entityId>" -> that entity's TB plus any adjustment booked
+//                    directly against that entity, summed (never overwritten — see the
+//                    entity+adjustment bug in HANDOVER.md §9.6).
+//   groupAdjustment  accountId -> adjustments carrying no entity. They belong to no entity
+//                    column, so they must be added on top of the entity columns to reach
+//                    the total.
+//   total            accountId -> the authoritative 'total' row, the same figure the P&L
+//                    and Balance Sheet read.
+//
+// The trap this exists to close: group-level adjustment rows and 'total' rows BOTH carry
+// entity_id IS NULL, so bucketing by entity_id alone silently merges them (the total then
+// double-counts every group-level adjustment). Separate by source_type first, always.
+export function getBuckets(periodId) {
+  const byAccountEntity = new Map();
+  const groupAdjustment = new Map();
+  const total = new Map();
+
+  for (const r of getMatrix(periodId)) {
+    const accountId = r.group_account_id;
+    const signed = (r.closing_dr || 0) - (r.closing_cr || 0);
+    const entityId = r.entity_id === undefined ? null : r.entity_id;
+    if (r.source_type === "total") {
+      total.set(accountId, (total.get(accountId) || 0) + signed);
+    } else if (r.source_type === "adjustment" && entityId === null) {
+      groupAdjustment.set(accountId, (groupAdjustment.get(accountId) || 0) + signed);
+    } else {
+      const k = `${accountId}:${entityId === null ? "null" : entityId}`;
+      byAccountEntity.set(k, (byAccountEntity.get(k) || 0) + signed);
+    }
+  }
+
+  return { byAccountEntity, groupAdjustment, total };
+}
