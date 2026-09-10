@@ -252,3 +252,49 @@ def test_re_page_renders(two_periods):
         assert "Retained Earnings Movement" in resp.text
     finally:
         app.dependency_overrides.clear()
+
+
+def test_group_row_includes_group_level_re_adjustments(consolidated):
+    """A Retained Earnings adjustment booked at GROUP level (entity_id NULL) belongs to no
+    entity bucket. If the group row sums entity buckets alone it omits that adjustment while
+    prior_net_profit (from compute_pl) still includes group-level effects, and the reported
+    gap is wrong by exactly the adjustment. Found on the real July 2026 data, where the
+    13,608,330,781 shareholder-loan reclass was silently missing from the check."""
+    from src.db.repositories import adjustment_repo, group_coa_repo, period_repo
+    from src.engines.adjustment_engine import create_adjustment
+    from src.engines.consolidation_engine import consolidate_period
+    from src.engines import re_check
+
+    conn, current_id, _ = consolidated
+    prior_id = period_repo.get_or_create(conn, 2026, 5)
+    # Give the prior period something consolidated so the check is applicable.
+    re_cat = group_coa_repo.get_by_name(conn, "Retained Earnings")
+    consolidated_repo.insert_row(conn, prior_id, re_cat["group_account_id"], None,
+                                 0, 0, 0, 0, 0, 0, source_type="total")
+    conn.commit()
+
+    before = re_check.run(conn, current_id)
+    group_before = next(r for r in before.rows if r.entity_code is None).re_closing_current
+
+    amount = 9_876_543_210.0
+    create_adjustment(conn, current_id, "ADJ-RE-GROUP", "reclassification",
+                      "group-level RE reclass", [
+                          {"entity_id": None, "group_account_id": re_cat["group_account_id"],
+                           "debit_amount": amount, "credit_amount": 0.0},
+                          {"entity_id": None,
+                           "group_account_id": group_coa_repo.get_by_name(conn, "Loans & Advances taken")["group_account_id"],
+                           "debit_amount": 0.0, "credit_amount": amount},
+                      ], user="test")
+    adjustment_repo.apply_all(conn, current_id, user="test")
+    conn.commit()
+    consolidate_period(conn, current_id)
+    conn.commit()
+
+    after = re_check.run(conn, current_id)
+    group_after = next(r for r in after.rows if r.entity_code is None).re_closing_current
+    entity_after = sum(r.re_closing_current for r in after.rows if r.entity_code is not None)
+
+    assert group_after - group_before == pytest.approx(amount, abs=1), \
+        "group row must move by the group-level RE adjustment"
+    assert group_after - entity_after == pytest.approx(amount, abs=1), \
+        "entity rows cannot carry a group-level adjustment; the group row must add it on top"

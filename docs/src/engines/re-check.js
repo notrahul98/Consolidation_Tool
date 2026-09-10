@@ -11,10 +11,32 @@
 // rationale. Severity is always Warning; this check never blocks locking a period.
 import { persistence } from "../db/persistence.js";
 import * as periodRepo from "../db/period-repo.js";
+import * as consolidatedRepo from "../db/consolidated-repo.js";
+import * as groupCoaRepo from "../db/group-coa-repo.js";
 import { computePl } from "./statements.js";
 import { codepointCompare } from "../utils.js";
 
 const RE_ACCOUNT_NAME = "Retained Earnings";
+
+// Post-adjustment Retained Earnings for the group: every entity's bucket PLUS group-level
+// adjustments.
+//
+// Not the sum of per-entity buckets alone: an adjustment booked at group level carries no
+// entity_id, so it lands in no entity's bucket and summing them silently omits it. That
+// would pair an RE closing WITHOUT group-level adjustments against a priorNetProfit (from
+// computePl) WITH them, and report a gap wrong by exactly those adjustments -- which is what
+// happened on the real July 2026 data, off by the 13,608,330,781 shareholder-loan reclass.
+function reClosingGroupTotal(periodId) {
+  const account = groupCoaRepo.getByName(RE_ACCOUNT_NAME);
+  if (!account) return 0.0;
+  const accountId = account.group_account_id;
+  const { byAccountEntity, groupAdjustment } = consolidatedRepo.getBuckets(periodId);
+  let entitySum = 0.0;
+  for (const [key, value] of byAccountEntity) {
+    if (Number(key.split(":")[0]) === accountId) entitySum += value;
+  }
+  return entitySum + (groupAdjustment.get(accountId) || 0.0);
+}
 
 // One per entity, plus a group total row (entityCode = null).
 export class RECheckRow {
@@ -144,15 +166,17 @@ export function run(currentPeriodId) {
   );
   rows.sort((a, b) => codepointCompare(a.entityCode || "", b.entityCode || ""));
 
-  // Group total row: RE closings sum naturally across entities; net profit uses
-  // computePl directly so the headline figure ties to the P&L page exactly.
+  // Group total row: every figure must come from a source that includes group-level
+  // adjustments, or the gap is wrong by exactly those adjustments. Net profit uses computePl
+  // and RE closing uses reClosingGroupTotal, so both tie to the P&L and BS pages. The
+  // per-entity rows above necessarily exclude group-level adjustments -- those belong to no
+  // entity -- so the entity rows will not add up to this row whenever any exist.
   const { netIncome: groupPriorProfit } = computePl(priorPeriodId);
-  const sum = (m) => Array.from(m.values()).reduce((s, v) => s + v, 0);
   const groupRow = new RECheckRow({
     entityCode: null,
-    reClosingPrior: sum(rePrior),
+    reClosingPrior: reClosingGroupTotal(priorPeriodId),
     priorNetProfit: groupPriorProfit,
-    reClosingCurrent: sum(reCurrent),
+    reClosingCurrent: reClosingGroupTotal(currentPeriodId),
   });
   rows.push(groupRow);
 

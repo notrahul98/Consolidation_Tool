@@ -16,10 +16,30 @@ all year. Severity is always Warning; this check never blocks locking a period.
 import sqlite3
 from dataclasses import dataclass, field
 
-from src.db.repositories import period_repo
+from src.db.repositories import consolidated_repo, group_coa_repo, period_repo
 from src.engines.statement_generator import compute_pl
 
 RE_ACCOUNT_NAME = "Retained Earnings"
+
+
+def _re_closing_group_total(conn: sqlite3.Connection, period_id: int) -> float:
+    """Post-adjustment Retained Earnings for the group: every entity's bucket PLUS
+    group-level adjustments.
+
+    Not sum(per-entity buckets) alone: an adjustment booked at group level carries no
+    entity_id, so it lands in no entity's bucket and summing them silently omits it. That
+    would pair an RE closing WITHOUT group-level adjustments against a prior_net_profit
+    (from compute_pl) WITH them, and report a gap wrong by exactly those adjustments --
+    which is what happened on the real July data, off by the 13,608,330,781 shareholder-loan
+    reclass. Entities + group-level is what the consolidated 'total' row holds, so this ties
+    to the Balance Sheet, while still being well-defined before a period is consolidated."""
+    account = group_coa_repo.get_by_name(conn, RE_ACCOUNT_NAME)
+    if account is None:
+        return 0.0
+    account_id = account["group_account_id"]
+    by_account_entity, group_adjustment, _ = consolidated_repo.get_buckets(conn, period_id)
+    entity_sum = sum(v for (acct, _entity), v in by_account_entity.items() if acct == account_id)
+    return entity_sum + group_adjustment.get(account_id, 0.0)
 
 
 @dataclass
@@ -156,14 +176,17 @@ def run(conn: sqlite3.Connection, current_period_id: int) -> RECheckResult:
         ))
     rows.sort(key=lambda r: r.entity_code or "")
 
-    # Group total row: RE closings sum naturally across entities; net profit uses
-    # compute_pl directly so the headline figure ties to the P&L page exactly.
+    # Group total row: every figure must come from a source that includes group-level
+    # adjustments, or the gap is wrong by exactly those adjustments. Net profit uses
+    # compute_pl and RE closing uses the 'total' row, so both tie to the P&L and BS pages.
+    # The per-entity rows above necessarily exclude group-level adjustments -- those belong
+    # to no entity -- so the entity rows will not add up to this row whenever any exist.
     _, group_prior_profit = compute_pl(conn, prior_period_id)
     group_row = RECheckRow(
         entity_code=None,
-        re_closing_prior=sum(re_prior.values()),
+        re_closing_prior=_re_closing_group_total(conn, prior_period_id),
         prior_net_profit=group_prior_profit,
-        re_closing_current=sum(re_current.values()),
+        re_closing_current=_re_closing_group_total(conn, current_period_id),
     )
     rows.append(group_row)
 
