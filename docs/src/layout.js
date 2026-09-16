@@ -139,6 +139,47 @@ export function pageHead({ title, subtitle, actions }) {
   `;
 }
 
+let toastTimer = null;
+
+// A transient confirmation that does not push the page around.
+//
+// Saving on Mapping used to insert a banner above a 150-row table, which moved everything the
+// reader was looking at. A toast says the same thing without reflowing anything. Errors still
+// belong in an inline flash — those need to stay on screen until they are dealt with.
+export function toast(message, kind = "success") {
+  let el = document.getElementById("toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast";
+    document.body.appendChild(el);
+  }
+  el.className = `toast toast-${kind} is-visible`;
+  el.textContent = message;
+  el.setAttribute("role", "status");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("is-visible"), 3200);
+}
+
+// Radio-style filter pills with counts, e.g. All 152 / Unmapped 3 / Split 6.
+export function filterPills(options, active, onPick) {
+  return html`
+    <div class="pills" role="group">
+      ${options.map(
+        (o) => html`
+          <button
+            type="button"
+            class="pill ${o.key === active ? "is-active" : ""}"
+            ?disabled=${o.count === 0 && o.key !== active}
+            @click=${() => onPick(o.key)}
+          >
+            ${o.label}<span class="pill-count">${o.count}</span>
+          </button>
+        `
+      )}
+    </div>
+  `;
+}
+
 // Run `fn` once the busy state has had a chance to reach the screen.
 //
 // Consolidate and the Excel export are synchronous and block the main thread for their whole

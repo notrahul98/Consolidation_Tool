@@ -5,8 +5,14 @@ import * as groupCoaRepo from "../db/group-coa-repo.js";
 import * as adjustmentRepo from "../db/adjustment-repo.js";
 import { VALID_TYPES } from "../db/adjustment-repo.js";
 import { createAdjustment, updateAdjustment } from "../engines/adjustments.js";
-import { updateNav } from "../layout.js";
+import { pageHead, updateNav } from "../layout.js";
 import { router } from "../router.js";
+
+function idr(value) {
+  const v = Number(value) || 0;
+  const formatted = Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  return v < 0 ? `(${formatted})` : formatted;
+}
 
 function lineRowTemplate(entities, categories, prefill = null) {
   return html`
@@ -74,36 +80,55 @@ export async function renderAdjustmentForm(mountEl, { period: periodStr, ref }) 
 
   render(
     html`
-      <h1>${mode === "edit" ? `Edit Adjustment ${ref}` : "New Adjustment"}</h1>
-      <p class="subtitle">
-        ${mode === "edit"
-          ? "Editing resets this adjustment to draft — re-apply it and re-run Consolidate afterward. The ref can't be changed here; delete and recreate to rename."
-          : "A double-entry journal — debits must equal credits, at least 2 lines, narration required."}
-      </p>
+      ${pageHead({
+        title: mode === "edit" ? `Edit Adjustment ${ref}` : "New Adjustment",
+        subtitle: "A double-entry journal — debits must equal credits, at least two lines, narration required.",
+        actions: html`
+          <a class="btn btn-secondary" href="#/periods/${periodStr}/adjustments">Cancel</a>
+          <button class="btn" type="submit" form="adj-form">${mode === "edit" ? "Save changes" : "Create as draft"}</button>
+        `,
+      })}
+
+      ${mode === "edit"
+        ? html`
+            <div class="callout">
+              <h3>Editing takes three steps</h3>
+              <ol>
+                <li><strong>Save changes</strong> here — this resets the adjustment to draft, so it stops affecting the numbers.</li>
+                <li><strong>Apply</strong> it again from the adjustments list.</li>
+                <li><strong>Re-run Consolidate</strong> so the statements pick it up.</li>
+              </ol>
+              <p>The ref can't be changed here — delete and recreate to rename.</p>
+            </div>
+          `
+        : ""}
 
       <div id="error-box"></div>
 
       <form id="adj-form">
         <div class="card">
-          <div class="field-row">
-            <div class="field">
-              <label for="external_ref">Adjustment Ref</label>
-              ${mode === "edit"
-                ? html`<input type="text" id="external_ref" .value=${existingAdj.external_ref} readonly disabled />`
-                : html`<input type="text" id="external_ref" name="external_ref" required placeholder="ADJ-${periodStr}-001" />`}
+          <div class="form-grid">
+            <div>
+              <div class="field">
+                <label for="external_ref">Adjustment Ref</label>
+                ${mode === "edit"
+                  ? html`<input type="text" id="external_ref" .value=${existingAdj.external_ref} readonly disabled />`
+                  : html`<input type="text" id="external_ref" name="external_ref" required placeholder="ADJ-${periodStr}-001" />`}
+              </div>
+              <div class="field">
+                <label for="adjustment_type">Type</label>
+                <select id="adjustment_type" name="adjustment_type">
+                  ${types.map(
+                    (t) => html`<option value=${t} ?selected=${mode === "edit" ? t === existingAdj.adjustment_type : t === "other"}>${t}</option>`
+                  )}
+                </select>
+              </div>
             </div>
             <div class="field">
-              <label for="adjustment_type">Type</label>
-              <select id="adjustment_type" name="adjustment_type">
-                ${types.map(
-                  (t) => html`<option value=${t} ?selected=${mode === "edit" ? t === existingAdj.adjustment_type : t === "other"}>${t}</option>`
-                )}
-              </select>
+              <label for="narration">Narration</label>
+              <textarea id="narration" name="narration" rows="6" required>${mode === "edit" ? existingAdj.narration : ""}</textarea>
+              <div class="field-note">What this entry is for, in enough detail that it still makes sense at audit.</div>
             </div>
-          </div>
-          <div class="field">
-            <label for="narration">Narration</label>
-            <textarea id="narration" name="narration" rows="2" required>${mode === "edit" ? existingAdj.narration : ""}</textarea>
           </div>
         </div>
 
@@ -120,9 +145,10 @@ export async function renderAdjustmentForm(mountEl, { period: periodStr, ref }) 
             ${lineRows}
           </div>
           <button type="button" class="btn btn-secondary btn-sm" id="add-line">+ Add line</button>
+          <!-- Running totals: the entry is refused unless it balances, so show the difference
+               as it is typed rather than only on submit. -->
+          <div class="je-total" id="je-total"></div>
         </div>
-
-        <button class="btn" type="submit">${mode === "edit" ? "Save changes" : "Create as draft"}</button>
       </form>
     `,
     mountEl
@@ -132,10 +158,40 @@ export async function renderAdjustmentForm(mountEl, { period: periodStr, ref }) 
   const errorBox = mountEl.querySelector("#error-box");
   const form = mountEl.querySelector("#adj-form");
 
+  const totalEl = mountEl.querySelector("#je-total");
+
+  function updateTotals() {
+    let dr = 0;
+    let cr = 0;
+    for (const row of linesEl.querySelectorAll(".je-line")) {
+      const drEl = row.querySelector("input[name=debit]");
+      const crEl = row.querySelector("input[name=credit]");
+      if (!drEl || !crEl) continue; // the header row
+      dr += parseFloat(drEl.value) || 0;
+      cr += parseFloat(crEl.value) || 0;
+    }
+    const diff = dr - cr;
+    render(
+      html`
+        <span>Debits <strong class="num">${idr(dr)}</strong></span>
+        <span>Credits <strong class="num">${idr(cr)}</strong></span>
+        <span class=${Math.abs(diff) < 0.005 ? "je-balanced" : "je-unbalanced"}>
+          ${Math.abs(diff) < 0.005 ? "Balanced" : html`Out by <strong class="num">${idr(diff)}</strong>`}
+        </span>
+      `,
+      totalEl
+    );
+  }
+
   function wireRemoveButton(btn) {
-    btn.addEventListener("click", () => btn.closest(".je-line").remove());
+    btn.addEventListener("click", () => {
+      btn.closest(".je-line").remove();
+      updateTotals();
+    });
   }
   linesEl.querySelectorAll("[data-remove-line]").forEach(wireRemoveButton);
+  linesEl.addEventListener("input", updateTotals);
+  updateTotals();
 
   mountEl.querySelector("#add-line").addEventListener("click", () => {
     const wrap = document.createElement("div");
@@ -143,6 +199,7 @@ export async function renderAdjustmentForm(mountEl, { period: periodStr, ref }) 
     const rowEl = wrap.firstElementChild;
     linesEl.appendChild(rowEl);
     wireRemoveButton(rowEl.querySelector("[data-remove-line]"));
+    updateTotals();
   });
 
   form.addEventListener("submit", (ev) => {

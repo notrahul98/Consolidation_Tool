@@ -160,6 +160,151 @@ h2 { font-size: 16px; margin: 0 0 12px; }
 .action-note { margin: 10px 0 0; }
 .action-subhead { margin-top: 20px; }
 
+/* --- Toast and filter pills --------------------------------------------------------------- */
+.toast {
+  position: fixed; right: 20px; bottom: 20px; z-index: 200;
+  background: var(--ink); color: #fff; padding: 11px 18px; border-radius: 9px;
+  font-size: 13px; font-weight: 500; box-shadow: 0 8px 28px -8px rgba(20,24,27,0.5);
+  opacity: 0; transform: translateY(8px); pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.toast.is-visible { opacity: 1; transform: none; }
+.toast-error { background: var(--negative); }
+.toast-warn { background: var(--warn); }
+
+.pills { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.pill {
+  display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600;
+  padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--border);
+}
+.pill:hover:not(:disabled) { color: var(--accent-ink); }
+.pill.is-active { background: var(--accent); color: #fff; border-color: transparent; }
+.pill:disabled { opacity: 0.45; cursor: default; }
+.pill-count { font-variant-numeric: tabular-nums; opacity: 0.75; font-weight: 500; }
+
+.toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.toolbar input[type=search], .toolbar input[type=text] { width: auto; min-width: 230px; }
+.toolbar-spacer { flex: 1; }
+.toolbar-note { font-size: 12.5px; color: var(--muted); }
+
+/* --- Mapping ------------------------------------------------------------------------------ */
+/* The ledger name is the only thing identifying a row, so it stays put while the category
+   selects scroll. */
+table.mapping thead th { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+table.mapping th:nth-child(1), table.mapping td:nth-child(1) {
+  position: sticky; left: 0; z-index: 1; background: var(--surface);
+  min-width: 290px; max-width: 290px; box-shadow: 1px 0 0 var(--line);
+}
+table.mapping thead th:nth-child(1) { z-index: 3; }
+/* A split ledger reads as one unit: the parent names it, the children are the per-entity rows
+   that must be categorized separately. */
+tr.parent-row td { background: var(--accent-wash); border-bottom: none; }
+tr.parent-row td:nth-child(1) { background: var(--accent-wash); }
+tr.child-row td { background: var(--surface-2); }
+tr.child-row td:nth-child(1) { background: var(--surface-2); padding-left: 30px; color: var(--muted); }
+tr.child-row:last-of-type td { border-bottom: 1px solid var(--line); }
+tr.is-unmapped td:nth-child(1) { box-shadow: inset 3px 0 0 var(--warn), 1px 0 0 var(--line); }
+tr.is-edited td:nth-child(1) { box-shadow: inset 3px 0 0 var(--accent), 1px 0 0 var(--line); }
+tr.is-edited td:nth-child(1)::after { content: " •"; color: var(--accent); font-weight: 700; }
+
+/* --- Validation --------------------------------------------------------------------------- */
+.check-list { padding: 0; }
+.check { padding: 12px 20px; border-bottom: 1px solid var(--line); }
+.check:last-child { border-bottom: none; }
+.check-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.check-id { font-size: 12px; color: var(--muted); min-width: 52px; }
+.check-desc { flex: 1; font-size: 13.5px; }
+.check-details { margin: 8px 0 0 64px; padding-left: 18px; font-size: 12.5px; color: var(--ink-2); }
+.check-details li { margin-bottom: 3px; }
+.check.is-error { box-shadow: inset 3px 0 0 var(--negative); }
+.check.is-warn { box-shadow: inset 3px 0 0 var(--warn); }
+
+/* --- Audit log ---------------------------------------------------------------------------- */
+table.audit thead th { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+tr.is-expandable { cursor: pointer; }
+tr.is-expandable:hover td { background: var(--surface-2); }
+.disclosure { color: var(--muted); margin-right: 6px; }
+.audit-summary { color: var(--ink-2); font-size: 12.5px; }
+tr.audit-detail td { background: var(--surface-2); padding: 0; }
+.diff { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); }
+.diff > div { background: var(--surface); padding: 12px 16px; }
+.diff h3 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.diff pre {
+  margin: 0; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11.5px;
+  white-space: pre-wrap; word-break: break-word; color: var(--ink-2); max-height: 260px; overflow: auto;
+}
+@media (max-width: 800px) { .diff { grid-template-columns: 1fr; } }
+
+/* --- Tabs and Stock ----------------------------------------------------------------------- */
+.tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+.tab {
+  background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer;
+  padding: 9px 16px; font-size: 13px; font-weight: 600; color: var(--ink-2);
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.tab:hover { color: var(--accent-ink); }
+.tab.is-active { color: var(--accent-ink); border-bottom-color: var(--accent); }
+.tab-dot { color: var(--accent); font-size: 16px; line-height: 0; }
+.tab-flag {
+  background: var(--warn-wash); color: var(--warn); border-radius: 999px;
+  width: 16px; height: 16px; font-size: 11px; display: inline-flex; align-items: center; justify-content: center;
+}
+
+.stock-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px; }
+.field-note { font-size: 11.5px; color: var(--muted); margin-top: 5px; line-height: 1.45; }
+.linkish {
+  background: none; border: none; padding: 0; font: inherit; font-size: 11.5px;
+  color: var(--accent); cursor: pointer; text-decoration: underline;
+}
+.stock-result {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 18px;
+  margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line);
+}
+.stock-result .label { font-size: 12px; color: var(--ink-2); margin: 0 0 6px; }
+.stock-result .value { font-size: 18px; font-weight: 600; margin: 0; }
+.stock-warnings { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+/* --- Adjustments -------------------------------------------------------------------------- */
+.adj-list { padding: 0; }
+.adj { border-bottom: 1px solid var(--line); }
+.adj:last-child { border-bottom: none; }
+.adj.is-draft { box-shadow: inset 3px 0 0 var(--warn); }
+.adj-head { display: flex; align-items: center; gap: 12px; padding: 10px 18px; flex-wrap: wrap; }
+.adj-toggle {
+  background: none; border: none; cursor: pointer; padding: 0; font: inherit;
+  display: inline-flex; align-items: center; gap: 6px; color: var(--ink);
+}
+.adj-type { font-size: 12px; color: var(--muted); }
+.adj-narration {
+  flex: 1; min-width: 140px; font-size: 12.5px; color: var(--ink-2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.adj-total { font-size: 13px; font-weight: 600; }
+.adj-actions { display: flex; gap: 6px; }
+.adj-confirm { margin: 0 18px 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.adj-lines { padding: 0 18px 14px; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+@media (max-width: 800px) { .form-grid { grid-template-columns: 1fr; } }
+.form-grid textarea { resize: vertical; }
+
+.je-total {
+  display: flex; gap: 24px; align-items: baseline; justify-content: flex-end;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink-2);
+}
+.je-balanced { color: var(--good); font-weight: 600; }
+.je-unbalanced { color: var(--negative); font-weight: 600; }
+
+.callout {
+  background: var(--accent-wash); border: 1px solid rgba(30,75,67,0.16); border-radius: 10px;
+  padding: 14px 20px; margin-bottom: 20px; font-size: 13px; color: var(--accent-ink);
+}
+.callout h3 { margin: 0 0 8px; font-size: 13px; }
+.callout ol { margin: 0; padding-left: 20px; }
+.callout li { margin-bottom: 4px; }
+.callout p { margin: 8px 0 0; color: var(--ink-2); font-size: 12.5px; }
+
 /* --- Import TB -------------------------------------------------------------------------- */
 /* A file input styled as a button: the <input> is hidden and its <label> carries the button
    look, which keeps the native file picker and its keyboard behaviour. */
