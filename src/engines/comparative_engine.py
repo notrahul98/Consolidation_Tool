@@ -136,11 +136,12 @@ def resolve_comparative_periods(conn: sqlite3.Connection, period_id: int) -> Com
     )
 
 
-def _totals_for_month(conn: sqlite3.Connection, year: int, month: int) -> dict | None:
+def totals_for_month(conn: sqlite3.Connection, year: int, month: int) -> dict | None:
     """Leaf totals for one month, or None when that month has nothing consolidated.
 
     None and an all-zero dict are different answers and are kept that way: None becomes "—",
-    a real zero becomes 0.
+    a real zero becomes 0. Public because the Excel exporter needs the same distinction to
+    decide which comparative columns get formulas and which are left blank.
     """
     period = period_repo.get_by_year_month(conn, year, month)
     if period is None:
@@ -217,8 +218,8 @@ def compute_pl_comparative(conn: sqlite3.Connection, period_id: int) -> Comparat
 
     monthly_totals: dict[str, dict | None] = {}
     for (cur_year, cur_month), (prior_year, prior_month) in context.month_pairs:
-        monthly_totals[month_key(cur_year, cur_month)] = _totals_for_month(conn, cur_year, cur_month)
-        monthly_totals[month_key(prior_year, prior_month)] = _totals_for_month(conn, prior_year, prior_month)
+        monthly_totals[month_key(cur_year, cur_month)] = totals_for_month(conn, cur_year, cur_month)
+        monthly_totals[month_key(prior_year, prior_month)] = totals_for_month(conn, prior_year, prior_month)
 
     def ytd_totals(month_range):
         present = [monthly_totals[month_key(y, m)] for y, m in month_range]
@@ -279,7 +280,7 @@ def compute_bs_comparative(conn: sqlite3.Connection, period_id: int) -> Comparat
         for year, month in (cur, prior):
             key = month_key(year, month)
             columns.append(key)
-            totals = _totals_for_month(conn, year, month)
+            totals = totals_for_month(conn, year, month)
             if totals is None:
                 continue
             built, assets, _liabilities_equity = compute_bs_from_totals(totals)

@@ -1,5 +1,5 @@
-"""Phase 1 Excel pack: Summary, Conso_TB_Matrix, Conso_TB_Total, Entity_<CODE> sheets,
-PL_Current, BS_Current, Mapping, Validation.
+"""Excel pack: Summary, Conso_TB_Matrix, Conso_TB_Total, Entity_<CODE> sheets, PL_Current,
+BS_Current, Conso_TB_By_Period, PL_Comparative, BS_Comparative, Mapping, Validation.
 
 Every derived cell is a live Excel formula, not a static value, so the workbook is
 traceable directly in Excel (click a cell, see where it comes from):
@@ -13,6 +13,11 @@ traceable directly in Excel (click a cell, see where it comes from):
                    SUM/arithmetic formulas over rows within the same sheet; BS_Current's
                    Retained Earnings cross-references PL_Current's Net Income row directly,
                    same as the real template's Schedule 15 pulls in the current year's P&L)
+                -> Conso_TB_By_Period (one column per month; the anchor month's column is a
+                   formula into Conso_TB_Total so the two can never disagree, other months are
+                   written data, and the two YTD columns are SUMs over a month range)
+                    -> PL_Comparative / BS_Comparative (same rows and the same subtotal
+                       formulas as PL_Current / BS_Current, one column per period)
 
 statement_generator.py's compute_pl/compute_bs (numeric, not formulas) remain the source of
 truth for the validation engine — this module's formulas are built to mirror that logic
@@ -29,6 +34,7 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from src.db.repositories import entity_repo, group_coa_repo, consolidated_repo
+from src.engines import comparative_engine
 from src.engines.validation_engine import run_all
 from src.engines.statement_generator import compute_pl, compute_bs
 
@@ -229,101 +235,209 @@ def _leaf_ref(name, name_to_leaf, code_row, positive_override=False):
     return f"-{ref}" if negate else ref
 
 
+# --- Statement layouts --------------------------------------------------------------------
+# The P&L and BS row structures, written once and rendered into any column.
+#
+# PL_Current fills one column; PL_Comparative fills twenty-six. Defining the layout as data
+# rather than as inline openpyxl calls is what keeps those two from being separate copies that
+# drift — a subtotal formula changed in one and not the other would show up as a single wrong
+# column in a fifty-column sheet, which is exactly the kind of thing nobody notices.
+#
+# Each row is a dict:
+#   leaf    -> pull `name` from the trial balance, sign-flipped for display
+#   group   -> header whose amount is SUM over its members' rows; `members_first` puts the
+#              header after its members (the Balance Sheet's convention, unlike the P&L's)
+#   calc    -> amount is fn(row_of, col, ctx) -> formula fragment
+#   section -> a bare label with no amount
+
+def _leaf(label, level=0, name=None, positive_override=False):
+    return {"kind": "leaf", "label": label, "level": level, "name": name or label,
+            "positive_override": positive_override, "bold": False}
+
+
+def _calc(label, fn, bold=True, level=0):
+    return {"kind": "calc", "label": label, "level": level, "fn": fn, "bold": bold}
+
+
+def _group(label, members, members_first=False):
+    return {"kind": "group", "label": label, "level": 0, "members": members,
+            "members_first": members_first, "bold": True}
+
+
+def _section(label):
+    return {"kind": "section", "label": label, "level": 0, "bold": True}
+
+
+def _expand(layout):
+    """Flatten group entries into (header, members) in the right order for their statement."""
+    rows = []
+    for spec in layout:
+        if spec["kind"] != "group":
+            rows.append(spec)
+            continue
+        members = [_leaf(m, level=1) for m in spec["members"]]
+        rows.extend(members + [spec] if spec["members_first"] else [spec] + members)
+    return rows
+
+
+def PL_LAYOUT():
+    opex_members = ["Staff and Staff related Costs", "Marketing Expenses", "Sales Expenses", "Utlities",
+                    "Profit/Loss Sharing", "Rent Expense", "Depreciation", "Consumables",
+                    "Maintenance Expenses", "Taxes, Licenses & Permits", "Other Expenses", "Travel Expenses"]
+    return _expand([
+        _leaf("Sales", 1),
+        _calc("Total Sales", lambda R, C, X: f"{C}{R['Sales']}"),
+        _leaf("Sales Discount/Return", 1),
+        _calc("Net Sales", lambda R, C, X: f"{C}{R['Total Sales']}-{C}{R['Sales Discount/Return']}"),
+
+        _leaf("COGS before Direct Cost & Forex Gain/Loss", 1),
+        _leaf("Direct Income", 1),
+        _leaf("Direct Costs", 1),
+        _calc("Total Cost of Goods Sold",
+              lambda R, C, X: f"{C}{R['COGS before Direct Cost & Forex Gain/Loss']}"
+                              f"+{C}{R['Direct Costs']}-{C}{R['Direct Income']}"),
+        _calc("Gross Profit", lambda R, C, X: f"{C}{R['Net Sales']}-{C}{R['Total Cost of Goods Sold']}"),
+
+        _group("Staff and Staff related Costs",
+               ["Salaries & Wages", "Bonus & Incentives", "Commission", "Staff Insurance", "Staff Welfare"]),
+        _group("Marketing Expenses", ["Advertising Expense", "Entertainment"]),
+        _group("Sales Expenses", ["Freight, Storage & Handling", "Sales Fees", "Packaging and Labeling"]),
+        _group("Utlities", ["Telephone Expense", "Electricity Expense"]),
+        _leaf("Profit/Loss Sharing"),
+        _leaf("Rent Expense"),
+        _leaf("Depreciation"),
+        _group("Consumables", ["Printing & Stationery", "Pantry Expenses"]),
+        _group("Maintenance Expenses", ["Repairs & Maintenance", "Security Expense"]),
+        _leaf("Taxes, Licenses & Permits"),
+        _group("Other Expenses", [
+            "Sample Expenses", "Interest Expense", "Interest on  Shareholder loan", "Warehouse Expense",
+            "Consulting & Professional Fee", "General Insurance Expense", "Postage & Courier Expenses",
+            "Tax Expenses", "Transport Expense", "Office Expenses", "Modern Market Trading Terms",
+            "Stock Write Off", "Bad Debts",
+        ]),
+        _group("Travel Expenses", ["Travel Expense - International", "Travel Expense - Domestic"]),
+
+        _calc("Operating Expenses", lambda R, C, X: "+".join(f"{C}{R[m]}" for m in opex_members)),
+        _calc("Operative Profit/(Loss)", lambda R, C, X: f"{C}{R['Gross Profit']}-{C}{R['Operating Expenses']}"),
+
+        _group("Miscellaneous Expenses", ["Misc. Expense", "Bank Charges", "Foreign Exchange (Gain) Loss"]),
+        _group("Miscellaneous Incomes", ["Other Income", "Other Income - CPCI Income"]),
+        _calc("Total Non Operating Expenses/(Income)",
+              lambda R, C, X: f"{C}{R['Miscellaneous Expenses']}-{C}{R['Miscellaneous Incomes']}"),
+        _calc("Net Income/(Loss) Before Tax & Previous Year Expenses",
+              lambda R, C, X: f"{C}{R['Operative Profit/(Loss)']}-{C}{R['Total Non Operating Expenses/(Income)']}"),
+
+        _group("Extraordinary / Previous Year Expenses", [
+            "Tax Expenses - Prev Years", "Credit Note - Prev. Years", "Previous Year Rent Expenses",
+            "Previous Year Commissions", "Corporate Tax",
+        ]),
+        _calc("Net Income/(Loss) After Tax & Previous Year Expenses",
+              lambda R, C, X: f"{C}{R['Net Income/(Loss) Before Tax & Previous Year Expenses']}"
+                              f"-{C}{R['Extraordinary / Previous Year Expenses']}"),
+
+        _calc("Net Income Before Depreciation",
+              lambda R, C, X: f"{C}{R['Net Income/(Loss) After Tax & Previous Year Expenses']}+{C}{R['Depreciation']}"),
+        _calc("Net Profit without interest on bank loan",
+              lambda R, C, X: f"{C}{R['Net Income/(Loss) After Tax & Previous Year Expenses']}+{C}{R['Interest Expense']}"),
+        _calc("Net Profit without interest on shareholder loan",
+              lambda R, C, X: f"{C}{R['Net Income/(Loss) After Tax & Previous Year Expenses']}"
+                              f"+{C}{R['Interest on  Shareholder loan']}"),
+    ])
+
+
+def BS_LAYOUT():
+    return _expand([
+        _section("CURRENT ASSETS"),
+        _group("Total Current Assets", [
+            "Cash & Cash Equivalent", "Accounts Receivable", "Inventory", "Prepaid Taxes",
+            "Prepaid Expenses", "Short Term Deposits", "Other Receivables",
+        ], members_first=True),
+
+        _section("NON CURRENT ASSETS"),
+        _leaf("Fixed Assets", 1),
+        # Displayed as the raw (already-negative) balance — a contra-asset, matching the real
+        # template's convention — so Net Fixed Assets below is a plain addition, not a subtraction.
+        _leaf("Accumulated Depreciation", 1, positive_override=True),
+        _calc("Net Fixed Assets", lambda R, C, X: f"{C}{R['Fixed Assets']}+{C}{R['Accumulated Depreciation']}"),
+        _leaf("Other Non-current Asset"),
+        _calc("Total Non-Current Assets",
+              lambda R, C, X: f"{C}{R['Net Fixed Assets']}+{C}{R['Other Non-current Asset']}"),
+        _calc("TOTAL ASSETS", lambda R, C, X: f"{C}{R['Total Current Assets']}+{C}{R['Total Non-Current Assets']}"),
+
+        _section("LIABILITIES AND EQUITY"),
+        _section("LIABILITIES"),
+        _group("Total Short Term Liabilities", [
+            "Accounts Payable", "Taxes Payable", "Accrued Expenses", "Loans & Advances taken",
+            "Interco Balances", "Other Payables",
+        ], members_first=True),
+
+        _section("EQUITY"),
+        _leaf("Share Capital", 1),
+        # Retained Earnings = brought-forward P&L ledger balance + this period's P&L result,
+        # cross-referenced straight from the P&L sheet — same composition as the real template's
+        # Schedule 15 (prior years + current year P&L). ctx supplies the reference because it
+        # points at a different sheet and column for BS_Current than for BS_Comparative.
+        _calc("Retained Earnings",
+              lambda R, C, X: f"({X['re_leaf']})+{X['pl_net_income'](C)}", bold=False, level=1),
+        _calc("Total Equity", lambda R, C, X: f"{C}{R['Share Capital']}+{C}{R['Retained Earnings']}"),
+        _calc("TOTAL LIABILITIES AND EQUITY",
+              lambda R, C, X: f"{C}{R['Total Short Term Liabilities']}+{C}{R['Total Equity']}"),
+        _calc("Check", lambda R, C, X: f"{C}{R['TOTAL LIABILITIES AND EQUITY']}-{C}{R['TOTAL ASSETS']}"),
+    ])
+
+
+def _place_labels(ws, rows, label_col=1):
+    """Write the row labels down column A at the sheet's current position; returns
+    {label: sheet_row}. Rows are identical across every amount column, so this runs once."""
+    row_of = {}
+    for spec in rows:
+        indent = "    " * spec["level"]
+        ws.append([f"{indent}{spec['label']}"])
+        r = ws.max_row
+        if spec["bold"]:
+            ws.cell(row=r, column=label_col).font = BOLD
+        row_of[spec["label"]] = r
+    return row_of
+
+
+def _fill_column(ws, rows, row_of, col_letter, ref, ctx=None):
+    """Write one amount column's formulas. `ref(name, positive_override)` returns the leaf
+    reference fragment, which is the only thing that differs between a single-period sheet and
+    one comparative column."""
+    ctx = ctx or {}
+    for spec in rows:
+        if spec["kind"] == "section":
+            continue
+        r = row_of[spec["label"]]
+        if spec["kind"] == "leaf":
+            formula = ref(spec["name"], spec["positive_override"])
+        elif spec["kind"] == "group":
+            first = row_of[spec["members"][0]]
+            last = row_of[spec["members"][-1]]
+            formula = f"SUM({col_letter}{first}:{col_letter}{last})"
+        else:
+            formula = spec["fn"](row_of, col_letter, ctx)
+        cell = ws[f"{col_letter}{r}"]
+        cell.value = f"={formula}"
+        cell.number_format = IDR_FORMAT
+        if spec["bold"]:
+            cell.font = BOLD
+
+
 def _write_pl_sheet(wb, conn, name_to_leaf, code_row):
     ws = wb.create_sheet("PL_Current")
     ws.append(["Line Item", "Amount (IDR)", "% of Net Sales"])
     for c in ws[1]:
         c.font = BOLD
     ws.freeze_panes = "A2"
-    row_of: dict[str, int] = {}
 
-    def ref(name, positive_override=False):
-        return _leaf_ref(name, name_to_leaf, code_row, positive_override)
-
-    def w(label, formula, level=0, bold=False):
-        indent = "    " * level
-        ws.append([f"{indent}{label}", f"={formula}" if formula else None])
-        r = ws.max_row
-        ws.cell(row=r, column=2).number_format = IDR_FORMAT
-        if bold:
-            for c in ws[r][:2]:
-                c.font = BOLD
-        row_of[label] = r
-        return r
-
-    def group(header, members):
-        r_header = w(header, None, 0, bold=True)
-        for m in members:
-            w(m, ref(m), 1)
-        first, last = row_of[members[0]], row_of[members[-1]]
-        ws.cell(row=r_header, column=2, value=f"=SUM(B{first}:B{last})")
-        return header
-
-    w("Sales", ref("Sales"), 1)
-    w("Total Sales", f"B{row_of['Sales']}", 0, bold=True)
-    w("Sales Discount/Return", ref("Sales Discount/Return"), 1)
-    w("Net Sales", f"B{row_of['Total Sales']}-B{row_of['Sales Discount/Return']}", 0, bold=True)
-
-    w("COGS before Direct Cost & Forex Gain/Loss", ref("COGS before Direct Cost & Forex Gain/Loss"), 1)
-    w("Direct Income", ref("Direct Income"), 1)
-    w("Direct Costs", ref("Direct Costs"), 1)
-    w("Total Cost of Goods Sold",
-      f"B{row_of['COGS before Direct Cost & Forex Gain/Loss']}+B{row_of['Direct Costs']}-B{row_of['Direct Income']}",
-      0, bold=True)
-
-    w("Gross Profit", f"B{row_of['Net Sales']}-B{row_of['Total Cost of Goods Sold']}", 0, bold=True)
-
-    group("Staff and Staff related Costs",
-          ["Salaries & Wages", "Bonus & Incentives", "Commission", "Staff Insurance", "Staff Welfare"])
-    group("Marketing Expenses", ["Advertising Expense", "Entertainment"])
-    group("Sales Expenses", ["Freight, Storage & Handling", "Sales Fees", "Packaging and Labeling"])
-    group("Utlities", ["Telephone Expense", "Electricity Expense"])
-    w("Profit/Loss Sharing", ref("Profit/Loss Sharing"), 0)
-    w("Rent Expense", ref("Rent Expense"), 0)
-    w("Depreciation", ref("Depreciation"), 0)
-    group("Consumables", ["Printing & Stationery", "Pantry Expenses"])
-    group("Maintenance Expenses", ["Repairs & Maintenance", "Security Expense"])
-    w("Taxes, Licenses & Permits", ref("Taxes, Licenses & Permits"), 0)
-    group("Other Expenses", [
-        "Sample Expenses", "Interest Expense", "Interest on  Shareholder loan", "Warehouse Expense",
-        "Consulting & Professional Fee", "General Insurance Expense", "Postage & Courier Expenses",
-        "Tax Expenses", "Transport Expense", "Office Expenses", "Modern Market Trading Terms",
-        "Stock Write Off", "Bad Debts",
-    ])
-    group("Travel Expenses", ["Travel Expense - International", "Travel Expense - Domestic"])
-
-    opex_members = ["Staff and Staff related Costs", "Marketing Expenses", "Sales Expenses", "Utlities",
-                     "Profit/Loss Sharing", "Rent Expense", "Depreciation", "Consumables",
-                     "Maintenance Expenses", "Taxes, Licenses & Permits", "Other Expenses", "Travel Expenses"]
-    opex_formula = "+".join(f"B{row_of[m]}" for m in opex_members)
-    w("Operating Expenses", opex_formula, 0, bold=True)
-
-    w("Operative Profit/(Loss)", f"B{row_of['Gross Profit']}-B{row_of['Operating Expenses']}", 0, bold=True)
-
-    group("Miscellaneous Expenses", ["Misc. Expense", "Bank Charges", "Foreign Exchange (Gain) Loss"])
-    group("Miscellaneous Incomes", ["Other Income", "Other Income - CPCI Income"])
-    w("Total Non Operating Expenses/(Income)",
-      f"B{row_of['Miscellaneous Expenses']}-B{row_of['Miscellaneous Incomes']}", 0, bold=True)
-
-    w("Net Income/(Loss) Before Tax & Previous Year Expenses",
-      f"B{row_of['Operative Profit/(Loss)']}-B{row_of['Total Non Operating Expenses/(Income)']}", 0, bold=True)
-
-    group("Extraordinary / Previous Year Expenses", [
-        "Tax Expenses - Prev Years", "Credit Note - Prev. Years", "Previous Year Rent Expenses",
-        "Previous Year Commissions", "Corporate Tax",
-    ])
-    w("Net Income/(Loss) After Tax & Previous Year Expenses",
-      f"B{row_of['Net Income/(Loss) Before Tax & Previous Year Expenses']}-B{row_of['Extraordinary / Previous Year Expenses']}",
-      0, bold=True)
-
-    net_income_row = row_of["Net Income/(Loss) After Tax & Previous Year Expenses"]
-    w("Net Income Before Depreciation", f"B{net_income_row}+B{row_of['Depreciation']}", 0, bold=True)
-    w("Net Profit without interest on bank loan", f"B{net_income_row}+B{row_of['Interest Expense']}", 0, bold=True)
-    w("Net Profit without interest on shareholder loan",
-      f"B{net_income_row}+B{row_of['Interest on  Shareholder loan']}", 0, bold=True)
+    rows = PL_LAYOUT()
+    row_of = _place_labels(ws, rows)
+    _fill_column(ws, rows, row_of, "B",
+                 lambda name, pos: _leaf_ref(name, name_to_leaf, code_row, pos))
 
     net_sales_row = row_of["Net Sales"]
-    for label, r in row_of.items():
+    for r in row_of.values():
         ws.cell(row=r, column=3, value=f"=B{r}/$B${net_sales_row}")
         ws.cell(row=r, column=3).number_format = "0.0%"
 
@@ -331,7 +445,7 @@ def _write_pl_sheet(wb, conn, name_to_leaf, code_row):
     ws.column_dimensions["B"].width = 20
     ws.column_dimensions["C"].width = 15
 
-    return net_income_row
+    return row_of["Net Income/(Loss) After Tax & Previous Year Expenses"]
 
 
 def _write_bs_sheet(wb, conn, name_to_leaf, code_row, pl_net_income_row):
@@ -340,77 +454,223 @@ def _write_bs_sheet(wb, conn, name_to_leaf, code_row, pl_net_income_row):
     for c in ws[1]:
         c.font = BOLD
     ws.freeze_panes = "A2"
-    row_of: dict[str, int] = {}
 
-    def ref(name, positive_override=False):
-        return _leaf_ref(name, name_to_leaf, code_row, positive_override)
-
-    def w(label, formula, level=0, bold=False, section=False):
-        if section:
-            ws.append([label])
-            for c in ws[ws.max_row]:
-                c.font = BOLD
-            row_of[label] = ws.max_row
-            return ws.max_row
-        indent = "    " * level
-        ws.append([f"{indent}{label}", f"={formula}" if formula else None])
-        r = ws.max_row
-        ws.cell(row=r, column=2).number_format = IDR_FORMAT
-        if bold:
-            for c in ws[r][:2]:
-                c.font = BOLD
-        row_of[label] = r
-        return r
-
-    def group(header, members):
-        first_row = None
-        for i, m in enumerate(members):
-            r = w(m, ref(m), 1)
-            if i == 0:
-                first_row = r
-        last_row = row_of[members[-1]]
-        w(header, f"SUM(B{first_row}:B{last_row})", 0, bold=True)
-        return header
-
-    w("CURRENT ASSETS", None, section=True)
-    group("Total Current Assets", [
-        "Cash & Cash Equivalent", "Accounts Receivable", "Inventory", "Prepaid Taxes",
-        "Prepaid Expenses", "Short Term Deposits", "Other Receivables",
-    ])
-
-    w("NON CURRENT ASSETS", None, section=True)
-    w("Fixed Assets", ref("Fixed Assets"), 1)
-    # Displayed as the raw (already-negative) balance — a contra-asset, matching the real
-    # template's convention — so Net Fixed Assets below is a plain addition, not a subtraction.
-    w("Accumulated Depreciation", ref("Accumulated Depreciation", positive_override=True), 1)
-    w("Net Fixed Assets", f"B{row_of['Fixed Assets']}+B{row_of['Accumulated Depreciation']}", 0, bold=True)
-    w("Other Non-current Asset", ref("Other Non-current Asset"), 0)
-    w("Total Non-Current Assets", f"B{row_of['Net Fixed Assets']}+B{row_of['Other Non-current Asset']}", 0, bold=True)
-
-    w("TOTAL ASSETS", f"B{row_of['Total Current Assets']}+B{row_of['Total Non-Current Assets']}", 0, bold=True)
-
-    w("LIABILITIES AND EQUITY", None, section=True)
-    w("LIABILITIES", None, section=True)
-    group("Total Short Term Liabilities", [
-        "Accounts Payable", "Taxes Payable", "Accrued Expenses", "Loans & Advances taken",
-        "Interco Balances", "Other Payables",
-    ])
-
-    w("EQUITY", None, section=True)
-    w("Share Capital", ref("Share Capital"), 1)
-    # Retained Earnings = brought-forward P&L ledger balance (Conso_TB_Total) + this period's
-    # P&L result, cross-referenced straight from PL_Current — same composition as the real
-    # template's Schedule 15 (prior years + current year P&L).
-    w("Retained Earnings", f"({ref('Retained Earnings')})+'PL_Current'!B{pl_net_income_row}", 1)
-    w("Total Equity", f"B{row_of['Share Capital']}+B{row_of['Retained Earnings']}", 0, bold=True)
-
-    w("TOTAL LIABILITIES AND EQUITY",
-      f"B{row_of['Total Short Term Liabilities']}+B{row_of['Total Equity']}", 0, bold=True)
-
-    w("Check", f"B{row_of['TOTAL LIABILITIES AND EQUITY']}-B{row_of['TOTAL ASSETS']}", 0, bold=True)
+    rows = BS_LAYOUT()
+    row_of = _place_labels(ws, rows)
+    ref = lambda name, pos: _leaf_ref(name, name_to_leaf, code_row, pos)
+    _fill_column(ws, rows, row_of, "B", ref, ctx={
+        "re_leaf": ref("Retained Earnings", False),
+        "pl_net_income": lambda col: f"'PL_Current'!B{pl_net_income_row}",
+    })
 
     ws.column_dimensions["A"].width = 55
     ws.column_dimensions["B"].width = 20
+
+
+MONTH_ABBR = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _month_label(year, month):
+    return f"{MONTH_ABBR[month]}'{str(year)[2:]}"
+
+
+def _write_by_period_sheet(wb, conn, period_id, coa_leaves, code_row, context):
+    """Conso_TB_By_Period: one column per month of the current and prior year, plus the two
+    year-to-date columns, for every leaf category.
+
+    This is the base layer the comparative statements reference, playing the same role for
+    months that the Entity_<CODE> sheets play for entities. Months are laid out as two
+    contiguous year blocks rather than interleaved pairs so each YTD column is a single SUM
+    over a range — traceable in one click, instead of twelve cells added together.
+
+    The anchor month's column is a formula into Conso_TB_Total rather than a written value, so
+    the comparative sheets and PL_Current/BS_Current cannot show different numbers for the
+    same month. Every other month is written as data: there is no per-month entity sheet to
+    reference, exactly as the Adjustments column has no Entity_ADJ sheet to reference.
+
+    A month with nothing consolidated is left genuinely empty, not zero — the comparative
+    sheets then leave that column blank rather than asserting the business did no trade.
+    """
+    ws = wb.create_sheet("Conso_TB_By_Period")
+    months = comparative_engine.fiscal_months()
+    current_year, prior_year = context.anchor_year, context.anchor_year - 1
+
+    first_data_col = 4
+    col_of = {}
+    header = ["Account Code", "Account Name", "Section"]
+    for offset, year in enumerate((current_year, prior_year)):
+        for i, m in enumerate(months):
+            col = first_data_col + offset * len(months) + i
+            col_of[comparative_engine.month_key(year, m)] = get_column_letter(col)
+            header.append(_month_label(year, m))
+    ytd_current_col = get_column_letter(first_data_col + 2 * len(months))
+    ytd_prior_col = get_column_letter(first_data_col + 2 * len(months) + 1)
+    header += [f"YTD {_month_label(current_year, context.anchor_month)}",
+               f"YTD {_month_label(prior_year, context.anchor_month)}"]
+    ws.append(header)
+    for c in ws[1]:
+        c.font = BOLD
+    ws.freeze_panes = "D2"
+
+    monthly = {}
+    for year in (current_year, prior_year):
+        for m in months:
+            monthly[comparative_engine.month_key(year, m)] = comparative_engine.totals_for_month(conn, year, m)
+    has_data = {k for k, v in monthly.items() if v is not None}
+
+    anchor_key = context.anchor_key
+    ytd_current_last = col_of[comparative_engine.month_key(current_year, context.anchor_month)]
+    ytd_prior_last = col_of[comparative_engine.month_key(prior_year, context.anchor_month)]
+    first_col_letter = get_column_letter(first_data_col)
+    prior_first_col_letter = get_column_letter(first_data_col + len(months))
+
+    row_of = {}
+    for leaf in coa_leaves:
+        ws.append([leaf["account_code"], leaf["account_name"], leaf["section"]])
+        r = ws.max_row
+        row_of[leaf["account_code"]] = r
+        for key, totals in monthly.items():
+            if totals is None:
+                continue
+            cell = ws[f"{col_of[key]}{r}"]
+            if key == anchor_key:
+                cell.value = f"='Conso_TB_Total'!E{code_row[leaf['account_code']]}"
+            else:
+                entry = totals.get(leaf["account_name"])
+                cell.value = entry[0] if entry else 0.0
+            cell.number_format = IDR_FORMAT
+        ws[f"{ytd_current_col}{r}"] = f"=SUM({first_col_letter}{r}:{ytd_current_last}{r})"
+        ws[f"{ytd_prior_col}{r}"] = f"=SUM({prior_first_col_letter}{r}:{ytd_prior_last}{r})"
+        for letter in (ytd_current_col, ytd_prior_col):
+            ws[f"{letter}{r}"].number_format = IDR_FORMAT
+
+    ws.column_dimensions["A"].width = 12
+    ws.column_dimensions["B"].width = 40
+    ws.column_dimensions["C"].width = 20
+    for letter in list(col_of.values()) + [ytd_current_col, ytd_prior_col]:
+        ws.column_dimensions[letter].width = 15
+
+    return {
+        "row": row_of,
+        "col": col_of,
+        "ytd_current": ytd_current_col,
+        "ytd_prior": ytd_prior_col,
+        "has_data": has_data,
+        "months": months,
+        "current_year": current_year,
+        "prior_year": prior_year,
+    }
+
+
+def _by_period_ref(name, name_to_leaf, by_period, col_letter, positive_override=False):
+    """Leaf reference into one column of Conso_TB_By_Period, with the same Dr-positive ->
+    display-magnitude sign flip that _leaf_ref applies for the single-period sheets."""
+    info = name_to_leaf[name]
+    ref = f"'Conso_TB_By_Period'!{col_letter}{by_period['row'][info['account_code']]}"
+    negate = (info["normal_balance"] == "CR") and not positive_override
+    return f"-{ref}" if negate else ref
+
+
+def _comparative_columns(by_period, context, include_ytd):
+    """The column plan: YTD pair first (P&L only), then each month of the year immediately
+    followed by the same month a year earlier, exactly as the reference workbook orders them.
+
+    Every month gets a column whether or not it has data, so the sheet's shape matches the
+    template and stays stable as history is loaded; columns without data are left blank.
+    """
+    plan = []
+    if include_ytd:
+        plan.append({"key": comparative_engine.YTD_CURRENT, "source": by_period["ytd_current"],
+                     "label": f"YTD {_month_label(by_period['current_year'], context.anchor_month)}",
+                     "has_data": any(comparative_engine.month_key(by_period["current_year"], m) in by_period["has_data"]
+                                     for m in by_period["months"])})
+        plan.append({"key": comparative_engine.YTD_PRIOR, "source": by_period["ytd_prior"],
+                     "label": f"YTD {_month_label(by_period['prior_year'], context.anchor_month)}",
+                     "has_data": any(comparative_engine.month_key(by_period["prior_year"], m) in by_period["has_data"]
+                                     for m in by_period["months"])})
+    for m in by_period["months"]:
+        for year in (by_period["current_year"], by_period["prior_year"]):
+            key = comparative_engine.month_key(year, m)
+            plan.append({"key": key, "source": by_period["col"][key], "label": _month_label(year, m),
+                         "has_data": key in by_period["has_data"]})
+    return plan
+
+
+def _write_pl_comparative_sheet(wb, conn, name_to_leaf, by_period, context):
+    """PL_Comparative: the same P&L rows as PL_Current, one amount-and-% column pair per
+    period. Built from the shared PL_LAYOUT, so a subtotal formula cannot differ between this
+    sheet and PL_Current."""
+    ws = wb.create_sheet("PL_Comparative")
+    plan = _comparative_columns(by_period, context, include_ytd=True)
+
+    header, subhead = ["Line Item"], [""]
+    for column in plan:
+        header += [column["label"], ""]
+        subhead += ["IDR", "%"]
+    ws.append(header)
+    ws.append(subhead)
+    for c in ws[1] + ws[2]:
+        c.font = BOLD
+    ws.freeze_panes = "B3"
+
+    rows = PL_LAYOUT()
+    row_of = _place_labels(ws, rows)
+
+    for i, column in enumerate(plan):
+        amount_col = get_column_letter(2 + i * 2)
+        pct_col = get_column_letter(3 + i * 2)
+        ws.column_dimensions[amount_col].width = 17
+        ws.column_dimensions[pct_col].width = 9
+        ws.cell(row=1, column=2 + i * 2).value = column["label"]
+        # A period with nothing consolidated gets no formulas at all. Pointing the leaves at
+        # empty cells would render it as a column of zeros, which reads as "we traded nothing"
+        # rather than "this month has not been loaded".
+        if not column["has_data"]:
+            continue
+        _fill_column(ws, rows, row_of, amount_col,
+                     lambda name, pos, c=column: _by_period_ref(name, name_to_leaf, by_period, c["source"], pos))
+        net_sales_row = row_of["Net Sales"]
+        for r in row_of.values():
+            cell = ws.cell(row=r, column=3 + i * 2)
+            cell.value = f"={amount_col}{r}/{amount_col}${net_sales_row}"
+            cell.number_format = "0.0%"
+
+    ws.column_dimensions["A"].width = 55
+    return row_of["Net Income/(Loss) After Tax & Previous Year Expenses"]
+
+
+def _write_bs_comparative_sheet(wb, conn, name_to_leaf, by_period, context, pl_comparative_net_income_row):
+    """BS_Comparative: paired month-end positions, no year-to-date columns — a balance sheet
+    is a point in time and summing one across months is meaningless.
+
+    Each column's Retained Earnings picks up that month's own net income from the matching
+    PL_Comparative column, mirroring how BS_Current cross-references PL_Current.
+    """
+    ws = wb.create_sheet("BS_Comparative")
+    plan = _comparative_columns(by_period, context, include_ytd=False)
+    pl_plan = _comparative_columns(by_period, context, include_ytd=True)
+    pl_col_of = {c["key"]: get_column_letter(2 + i * 2) for i, c in enumerate(pl_plan)}
+
+    ws.append(["Line Item"] + [c["label"] for c in plan])
+    for c in ws[1]:
+        c.font = BOLD
+    ws.freeze_panes = "B2"
+
+    rows = BS_LAYOUT()
+    row_of = _place_labels(ws, rows)
+
+    for i, column in enumerate(plan):
+        letter = get_column_letter(2 + i)
+        ws.column_dimensions[letter].width = 17
+        if not column["has_data"]:
+            continue
+        ref = lambda name, pos, c=column: _by_period_ref(name, name_to_leaf, by_period, c["source"], pos)
+        _fill_column(ws, rows, row_of, letter, ref, ctx={
+            "re_leaf": ref("Retained Earnings", False),
+            "pl_net_income": lambda col, k=column["key"]: f"'PL_Comparative'!{pl_col_of[k]}{pl_comparative_net_income_row}",
+        })
+
+    ws.column_dimensions["A"].width = 55
 
 
 def _write_adjustments_sheet(wb, conn, period_id):
@@ -506,6 +766,12 @@ def export_pack(conn: sqlite3.Connection, period_id: int, out_path: str) -> None
     code_row = _write_matrix_and_total(wb, conn, period_id, coa_rows, entities, entity_row)
     net_income_row = _write_pl_sheet(wb, conn, name_to_leaf, code_row)
     _write_bs_sheet(wb, conn, name_to_leaf, code_row, net_income_row)
+
+    context = comparative_engine.resolve_comparative_periods(conn, period_id)
+    by_period = _write_by_period_sheet(wb, conn, period_id, coa_leaves, code_row, context)
+    comparative_net_income_row = _write_pl_comparative_sheet(wb, conn, name_to_leaf, by_period, context)
+    _write_bs_comparative_sheet(wb, conn, name_to_leaf, by_period, context, comparative_net_income_row)
+
     _write_adjustments_sheet(wb, conn, period_id)
     _write_adj_bridge_sheet(wb, conn, period_id)
     _write_mapping_sheet(wb, conn, period_id)
