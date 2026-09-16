@@ -119,8 +119,9 @@ export function resolveComparativePeriods(periodId) {
 // Leaf totals for one month, or null when that month has nothing consolidated.
 //
 // null and an all-zero map are different answers and are kept that way: null becomes "—", a
-// real zero becomes 0.
-function totalsForMonth(year, month) {
+// real zero becomes 0. Exported because the Excel exporter needs the same distinction to
+// decide which comparative columns get formulas and which are left blank.
+export function totalsForMonth(year, month) {
   const period = periodRepo.getByYearMonth(year, month);
   if (!period) return null;
   const totals = totalsForPeriod(period.period_id);
