@@ -35,6 +35,63 @@ def as_str(period_row: sqlite3.Row) -> str:
     return f"{period_row['year']}-{period_row['month']:02d}"
 
 
+def get_by_year_month(conn: sqlite3.Connection, year: int, month: int) -> sqlite3.Row | None:
+    return conn.execute(
+        "SELECT * FROM periods WHERE year = ? AND month = ?", (year, month)
+    ).fetchone()
+
+
+def list_in_range(conn: sqlite3.Connection, year: int, month_from: int, month_to: int) -> list[sqlite3.Row]:
+    """Periods that exist within one calendar year's month span, chronologically.
+
+    Returns only what has actually been imported — a range of Jan..Aug on a database holding
+    May..Aug returns four rows, not eight. Callers that need to know which months are absent
+    ask `comparative_readiness`; conflating "no row" with "zero" is the whole trap here.
+    """
+    return conn.execute(
+        """SELECT * FROM periods WHERE year = ? AND month BETWEEN ? AND ?
+           ORDER BY month""",
+        (year, month_from, month_to),
+    ).fetchall()
+
+
+def comparative_readiness(conn: sqlite3.Connection, months: list[tuple[int, int]]) -> dict:
+    """What a comparative range can and cannot show, for the warning banners.
+
+    Takes (year, month) pairs rather than period_ids — the most important thing to report is
+    the months that have no period row at all, and those have no id to pass in.
+
+    - `missing`: no period row, or a period row with nothing in consolidated_tb. Either way
+      the column has no figures; it contributes zero to a YTD sum and must display as "—".
+    - `open`: present but not locked. Figures can still move. Warn, never block (locked
+      decision, PLAN_PHASE8).
+    - `stale`: consolidated, but an adjustment has changed since. The numbers shown are not
+      what a re-consolidate would produce.
+    """
+    missing: list[str] = []
+    open_periods: list[str] = []
+    stale: list[str] = []
+
+    for year, month in months:
+        label = f"{year}-{month:02d}"
+        period = get_by_year_month(conn, year, month)
+        if period is None:
+            missing.append(label)
+            continue
+        has_data = conn.execute(
+            "SELECT 1 FROM consolidated_tb WHERE period_id = ? LIMIT 1", (period["period_id"],)
+        ).fetchone() is not None
+        if not has_data:
+            missing.append(label)
+            continue
+        if period["status"] != "locked":
+            open_periods.append(label)
+        if is_consolidation_stale(conn, period["period_id"]):
+            stale.append(label)
+
+    return {"missing": missing, "open": open_periods, "stale": stale}
+
+
 def get_prior(conn: sqlite3.Connection, period_id: int) -> sqlite3.Row | None:
     """The chronologically preceding period, if one has been imported."""
     current = conn.execute("SELECT * FROM periods WHERE period_id = ?", (period_id,)).fetchone()

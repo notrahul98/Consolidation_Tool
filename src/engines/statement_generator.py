@@ -1,7 +1,10 @@
 """Computes the P&L and Balance Sheet from the consolidated TB, matching the exact line-item
 structure, grouping, and section layout of the user's real template
-(`Kreasi Financials FY June 2026 Draft V2.xlsx`, sheets `P&L` and `BS`) — single period only
-(no comparatives yet — that needs multiple locked periods, a later phase).
+(`Kreasi Financials FY June 2026 Draft V2.xlsx`, sheets `P&L` and `BS`).
+
+One column per call. Multi-column comparatives live in `comparative_engine.py`, which reuses
+the `*_from_totals` builders below rather than restating this layout — that is the only reason
+they are split out from `compute_pl` / `compute_bs`.
 
 Sign convention: consolidated_tb stores signed closing balances as (closing_dr - closing_cr)
 — "Dr positive". For statement *display*, every leaf is converted to its own natural
@@ -22,8 +25,14 @@ minus Total Assets) exactly like the real template, instead of inventing a new l
 import sqlite3
 
 
-def _totals_by_account_name(conn: sqlite3.Connection, period_id: int) -> dict[str, tuple[float, str]]:
-    """account_name -> (Dr-positive signed closing balance, normal_balance)"""
+def totals_for_period(conn: sqlite3.Connection, period_id: int) -> dict[str, tuple[float, str]]:
+    """account_name -> (Dr-positive signed closing balance, normal_balance)
+
+    Public because the comparative engine sums these leaf totals across months and feeds the
+    result back into compute_pl_from_totals / compute_bs_from_totals. That is the only
+    supported way to build a multi-month column: subtotals must be recomputed by the same
+    formulas below, never summed across months.
+    """
     rows = conn.execute(
         """SELECT gc.account_name, gc.normal_balance,
                   SUM(ctb.closing_dr) AS dr, SUM(ctb.closing_cr) AS cr
@@ -62,7 +71,15 @@ def _build(totals: dict[str, tuple[float, str]]):
 
 
 def compute_pl(conn: sqlite3.Connection, period_id: int) -> tuple[list[StatementLine], float]:
-    totals = _totals_by_account_name(conn, period_id)
+    return compute_pl_from_totals(totals_for_period(conn, period_id))
+
+
+def compute_pl_from_totals(totals: dict[str, tuple[float, str]]) -> tuple[list[StatementLine], float]:
+    """The P&L structure itself, over any set of leaf totals — one period's or several summed.
+
+    Split out from compute_pl so a YTD column is the *same* statement over summed leaves,
+    rather than a second copy of this layout that would drift from it.
+    """
     leaf = _build(totals)
     L = StatementLine
     lines: list[StatementLine] = []
@@ -164,12 +181,27 @@ def compute_pl(conn: sqlite3.Connection, period_id: int) -> tuple[list[Statement
 
 
 def compute_bs(conn: sqlite3.Connection, period_id: int) -> tuple[list[StatementLine], float, float]:
-    totals = _totals_by_account_name(conn, period_id)
+    return compute_bs_from_totals(totals_for_period(conn, period_id))
+
+
+def compute_bs_from_totals(totals: dict[str, tuple[float, str]]) -> tuple[list[StatementLine], float, float]:
+    """The Balance Sheet structure over one month-end's leaf totals.
+
+    Unlike the P&L, this must NOT be handed leaf totals summed across months: the balance
+    sheet is a point-in-time position. A comparative BS column is just this function on that
+    month's own period.
+
+    Nor does the Retained Earnings face line take a YTD P&L. Measured on the real 2026 data:
+    the RE ledger closing already accumulates the earlier months of the same year (RE_bf for
+    August equals July's RE face line exactly), so pairing it with this month's P&L gives
+    Check = 0, while pairing it with YTD profit breaks Check by the accumulated amount
+    (3.7bn at June, 1.2bn at August). Month-only is correct here.
+    """
     leaf = _build(totals)
     L = StatementLine
     lines: list[StatementLine] = []
 
-    _, current_year_pl = compute_pl(conn, period_id)
+    _, current_year_pl = compute_pl_from_totals(totals)
 
     def group(header: str, members: list[str]) -> float:
         """BS convention (unlike the P&L's): line items first, subtotal last."""
