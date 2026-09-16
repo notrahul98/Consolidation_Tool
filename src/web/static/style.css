@@ -119,3 +119,32 @@ input[type=text], input[type=number], input[type=file], select, textarea {
 .period-picker a { text-decoration: none; }
 
 .empty { color: var(--muted); font-size: 13px; padding: 20px 0; }
+
+/* --- Comparative statements ------------------------------------------------------------ */
+/* 26 columns of figures, so the line-item label and the two YTD columns are pinned and
+   everything else scrolls horizontally underneath them. Sticky cells need an opaque
+   background of their own or the scrolling figures show through. */
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.page-head h1 { margin-bottom: 4px; }
+
+.comparative-wrap { max-height: 78vh; overflow: auto; }
+table.comparative { font-size: 12.5px; white-space: nowrap; }
+table.comparative th { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+table.comparative tr.subhead th { top: 37px; font-size: 10px; letter-spacing: 0.04em; }
+table.comparative th.sticky-col { z-index: 3; }
+table.comparative .sticky-col {
+  position: sticky; left: 0; background: var(--surface); text-align: left;
+  min-width: 300px; max-width: 300px; white-space: normal;
+  box-shadow: 1px 0 0 var(--line);
+}
+table.comparative tr.section .sticky-col { background: var(--accent-wash); }
+table.comparative td, table.comparative th { padding: 6px 12px; }
+table.comparative td.num { min-width: 108px; }
+table.comparative td.pct { min-width: 66px; color: var(--ink-2); }
+
+/* The reference workbook reads left to right from the YTD pair, so tint them rather than
+   leaving 24 monthly columns competing with the two that matter most. */
+table.comparative .pinned { background: var(--accent-wash); }
+table.comparative th.empty-col { color: var(--muted); opacity: 0.55; }
+table.comparative .dash { color: var(--muted); }
+.head-actions { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }

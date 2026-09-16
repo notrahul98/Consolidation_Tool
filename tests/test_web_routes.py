@@ -112,6 +112,81 @@ def test_pl_and_bs_pages_render_known_figures(client):
     assert f"{expected_total_assets:,.0f}" in bs.text
 
 
+def test_pl_and_bs_default_to_the_comparative_view(client):
+    import html
+
+    c, _conn, _period_id = client
+
+    pl = html.unescape(c.get("/periods/2026-06/pl").text)
+    assert 'class="comparative"' in pl
+    assert "YTD Jun'26" in pl
+    assert "YTD Jun'25" in pl
+    assert "Jun'26" in pl and "Jun'25" in pl
+
+    # The full grid is a month pair per calendar month of both years.
+    every = html.unescape(c.get("/periods/2026-06/pl?months=all").text)
+    assert "Jan'26" in every and "Dec'26" in every and "Jan'25" in every and "Dec'25" in every
+
+    bs = html.unescape(c.get("/periods/2026-06/bs").text)
+    assert "Jun'26" in bs
+    assert "YTD" not in bs  # point-in-time only; a summed balance sheet is meaningless
+
+
+def test_comparative_view_warns_about_missing_and_open_months(client):
+    """The fixture has June alone, so Jan-May are absent and June is unlocked. Both need to
+    be on screen — a YTD column covering one month of six is not wrong, but it is not what
+    the heading claims either."""
+    c, _conn, _period_id = client
+    pl = c.get("/periods/2026-06/pl")
+
+    assert "2026-01, 2026-02, 2026-03, 2026-04, 2026-05" in pl.text
+    assert "Open (unlocked) periods in range" in pl.text
+    assert "2026-06" in pl.text
+
+
+def test_empty_month_pairs_are_hidden_by_default_and_restorable(client):
+    """June alone means 22 of the 24 month columns are dashes. Hiding the pairs where
+    neither year has data is the difference between a readable page and ten screens of
+    scrolling; ?months=all puts the full grid back."""
+    import html
+
+    c, _conn, _period_id = client
+
+    default = html.unescape(c.get("/periods/2026-06/pl").text)
+    assert "11 months with no data in either year hidden" in default
+    assert "Jun'26" in default
+    assert "Jan'26" not in default
+    assert "Show all 12 months" in default
+
+    every = html.unescape(c.get("/periods/2026-06/pl?months=all").text)
+    assert "Jan'26" in every and "Dec'26" in every
+    assert "hidden" not in every
+    assert "Hide empty months" in every
+
+
+def test_missing_months_render_a_dash_not_a_zero(client):
+    c, _conn, _period_id = client
+    pl = c.get("/periods/2026-06/pl")
+    assert "&mdash;" in pl.text or "—" in pl.text
+
+
+def test_simple_view_is_still_reachable(client):
+    from src.engines.statement_generator import compute_pl
+
+    c, conn, period_id = client
+    _lines, net_income = compute_pl(conn, period_id)
+
+    pl = c.get("/periods/2026-06/pl?view=simple")
+    assert pl.status_code == 200
+    assert "% of Net Sales" in pl.text
+    assert "YTD" not in pl.text
+    assert f"({abs(net_income):,.0f})" in pl.text
+
+    bs = c.get("/periods/2026-06/bs?view=simple")
+    assert bs.status_code == 200
+    assert "Amount (IDR)" in bs.text
+
+
 def test_validation_page_shows_all_checks_passing(client):
     c, conn, period_id = client
     resp = c.get("/periods/2026-06/validation")

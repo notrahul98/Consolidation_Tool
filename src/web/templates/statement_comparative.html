@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ title }}</h1>
+    <p class="subtitle">
+      {{ subtitle }}{% if hidden_months %} &middot; {{ hidden_months }} month{{ '' if hidden_months == 1 else 's' }} with no data in either year hidden{% endif %}
+    </p>
+  </div>
+  <div class="head-actions">
+    {% if hidden_months %}
+      <a class="btn btn-secondary" href="/periods/{{ period_str }}/{{ statement }}?months=all">Show all 12 months</a>
+    {% elif months == 'all' %}
+      <a class="btn btn-secondary" href="/periods/{{ period_str }}/{{ statement }}">Hide empty months</a>
+    {% endif %}
+    <a class="btn" href="/periods/{{ period_str }}/{{ statement }}?view=simple">Single period view</a>
+  </div>
+</div>
+
+{% if missing %}
+  <div class="flash flash-warn">
+    {{ missing | length }} month{{ '' if missing | length == 1 else 's' }} in the year to date
+    {{ 'has' if missing | length == 1 else 'have' }} no consolidated data:
+    <strong>{{ missing | join(', ') }}</strong>.
+    {% if show_percent %}
+      The year-to-date column covers only the months that are loaded.
+    {% else %}
+      Those columns are blank; each column here is a month-end position, so the others are unaffected.
+    {% endif %}
+  </div>
+{% endif %}
+{% if open_in_range %}
+  <div class="flash flash-warn">
+    Open (unlocked) periods in range: <strong>{{ open_in_range | join(', ') }}</strong>. These figures can still change.
+  </div>
+{% endif %}
+{% if stale_in_range %}
+  <div class="flash flash-warn">
+    Adjustments changed since the last consolidation for <strong>{{ stale_in_range | join(', ') }}</strong>. Re-run Consolidate.
+  </div>
+{% endif %}
+
+<div class="card">
+  <div class="table-wrap comparative-wrap">
+  <table class="comparative">
+    <thead>
+      <tr>
+        <th class="sticky-col">Line Item</th>
+        {% for column in columns %}
+          <th class="num-col {{ 'pinned' if column.pinned }} {{ 'empty-col' if not column.has_data }}"
+              {% if show_percent %}colspan="2"{% endif %}>{{ column.label }}</th>
+        {% endfor %}
+      </tr>
+      {% if show_percent %}
+      <tr class="subhead">
+        <th class="sticky-col"></th>
+        {% for column in columns %}
+          <th class="num-col {{ 'pinned' if column.pinned }} {{ 'empty-col' if not column.has_data }}">IDR</th>
+          <th class="num-col {{ 'pinned' if column.pinned }} {{ 'empty-col' if not column.has_data }}">%</th>
+        {% endfor %}
+      </tr>
+      {% endif %}
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        {% if row.kind == 'section' %}
+        <tr class="section"><td class="sticky-col" colspan="{{ column_span }}">{{ row.label }}</td></tr>
+        {% else %}
+        <tr class="{{ 'subtotal' if row.kind == 'subtotal' }}">
+          <td class="sticky-col" style="padding-left: {{ 14 + row.level * 24 }}px">{{ row.label }}</td>
+          {% for cell in row.cells %}
+            {# A missing month and a month that genuinely netted to zero must not look alike. #}
+            <td class="num {{ 'pinned' if columns[loop.index0].pinned }} {{ 'neg' if cell.value and cell.value < 0 }}">
+              {%- if cell.value is none %}<span class="dash">&mdash;</span>{% else %}{{ cell.value | idr }}{% endif -%}
+            </td>
+            {% if show_percent %}
+            <td class="num pct {{ 'pinned' if columns[loop.index0].pinned }} {{ 'neg' if cell.percent and cell.percent < 0 }}">
+              {%- if cell.percent is none %}<span class="dash">&mdash;</span>{% else %}{{ cell.percent | pct }}{% endif -%}
+            </td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+        {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
