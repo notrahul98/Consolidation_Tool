@@ -1,45 +1,167 @@
-// Mirrors base.html's conditional nav + period badge (src/web/templates/base.html), plus
-// the stale-consolidation banner (src/web/deps.py's _inject_period_status, extended for
-// workstream D) -- centralized here so every page that calls updateNav() gets it, and no
-// individual page render can forget it, matching the reasoning in the Python source.
+// Chrome shared by every page: the grouped navigation, the period badge, the
+// stale-consolidation banner, and the small building blocks pages use for their own headers
+// and busy states.
+//
+// Centralized here so no individual page render can forget the banner — the same reasoning as
+// src/web/deps.py's _inject_period_status on the Python side. The Python app keeps its flat
+// nav; per PLAN_PHASE8 §2 the UI refresh is browser-only, and base.html's nav is Jinja rather
+// than JS so there is nothing to share but the stylesheet.
+import { html, render } from "../vendor/lit-html.js";
 import * as periodRepo from "./db/period-repo.js";
 
-const NAV_LINKS = [
-  ["", "Dashboard"],
-  ["/import", "Import TB"],
-  ["/mapping", "Mapping"],
-  ["/stock", "Stock"],
-  ["/adjustments", "Adjustments"],
-  ["/consolidated", "Consolidated TB"],
-  ["/pl", "P&L"],
-  ["/bs", "BS"],
-  ["/retained-earnings", "Retained Earnings"],
-  ["/validation", "Validation"],
-  ["/audit", "Audit Log"],
+// Eleven flat links had outgrown the topbar and gave no sense of the workflow. Grouped by
+// what you are doing rather than alphabetically: get data in, work on it, read the results,
+// check the machinery. Dashboard stays a plain link because it is the way back to the start.
+const NAV_GROUPS = [
+  { label: "Data", items: [["/import", "Import TB"]] },
+  {
+    label: "Work",
+    items: [
+      ["/mapping", "Mapping"],
+      ["/stock", "Stock"],
+      ["/adjustments", "Adjustments"],
+    ],
+  },
+  {
+    label: "Reports",
+    items: [
+      ["/pl", "P&L"],
+      ["/bs", "BS"],
+      ["/consolidated", "Consolidated TB"],
+      ["/retained-earnings", "Retained Earnings"],
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      ["/validation", "Validation"],
+      ["/audit", "Audit Log"],
+    ],
+  },
 ];
+
+// The path suffix after /periods/<period>, e.g. "/mapping". "" on the dashboard.
+function activeSuffix(periodStr) {
+  const path = location.hash.slice(1) || "/";
+  const prefix = `/periods/${periodStr}`;
+  return path.startsWith(prefix) ? path.slice(prefix.length) : null;
+}
+
+function closeAllMenus() {
+  for (const el of document.querySelectorAll("details.nav-group[open]")) el.open = false;
+}
+
+let menuDismissWired = false;
+
+// A <details> menu stays open until something closes it: it has no idea the pointer left, and
+// following a link inside it does not re-render the topbar. Wire the three ways out once.
+function wireMenuDismissal() {
+  if (menuDismissWired) return;
+  menuDismissWired = true;
+  document.addEventListener("click", (ev) => {
+    if (!ev.target.closest("details.nav-group")) closeAllMenus();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape") closeAllMenus();
+  });
+  window.addEventListener("hashchange", closeAllMenus);
+}
 
 export function updateNav(periodStr) {
   const navEl = document.getElementById("nav-links");
   const badgeEl = document.getElementById("period-badge");
   const staleEl = document.getElementById("stale-banner");
 
+  wireMenuDismissal();
+  // Every page calls updateNav first, so resetting here means a wide page cannot leak its
+  // width onto the next narrow one; pages that want the extra width call setPageWidth after.
+  setPageWidth("default");
+
   if (!periodStr) {
-    navEl.innerHTML = `<a href="#/">Dashboard</a>`;
+    render(html`<a class="nav-link is-active" href="#/">Dashboard</a>`, navEl);
     badgeEl.style.display = "none";
-    staleEl.innerHTML = "";
+    render("", staleEl);
     return;
   }
 
-  navEl.innerHTML = NAV_LINKS.map(
-    ([suffix, label]) => `<a href="#/periods/${periodStr}${suffix}">${label}</a>`
-  ).join("");
+  const suffix = activeSuffix(periodStr);
+  const href = (s) => `#/periods/${periodStr}${s}`;
+
+  render(
+    html`
+      <a class="nav-link ${suffix === "" ? "is-active" : ""}" href=${href("")}>Dashboard</a>
+      ${NAV_GROUPS.map((group) => {
+        const active = group.items.some(([s]) => s === suffix);
+        return html`
+          <details class="nav-group ${active ? "is-active" : ""}">
+            <summary>${group.label}<span class="caret" aria-hidden="true">▾</span></summary>
+            <div class="nav-menu">
+              ${group.items.map(
+                ([s, label]) => html`<a class=${s === suffix ? "is-active" : ""} href=${href(s)}>${label}</a>`
+              )}
+            </div>
+          </details>
+        `;
+      })}
+    `,
+    navEl
+  );
 
   const period = periodRepo.getByStr(periodStr);
   badgeEl.style.display = "";
   badgeEl.textContent = period ? `${periodStr} · ${period.status}` : periodStr;
 
-  staleEl.innerHTML =
+  render(
     period && periodRepo.isConsolidationStale(period.period_id)
-      ? `<div class="flash flash-warn">Adjustments changed since the last consolidation. Re-run Consolidate.</div>`
-      : "";
+      ? html`<div class="flash flash-warn">Adjustments changed since the last consolidation. Re-run Consolidate.</div>`
+      : "",
+    staleEl
+  );
+}
+
+// Statement and matrix pages need the extra width for their columns; forms and lists read
+// better narrow. Set on <body> so the topbar lines up with the content beneath it.
+export function setPageWidth(mode) {
+  document.body.classList.toggle("page-wide", mode === "wide");
+}
+
+// Title, optional subtitle, right-aligned actions — the header every page now shares, instead
+// of each one hand-rolling an <h1> and hoping the buttons land somewhere sensible.
+export function pageHead({ title, subtitle, actions }) {
+  return html`
+    <div class="page-head">
+      <div>
+        <h1>${title}</h1>
+        ${subtitle ? html`<p class="subtitle">${subtitle}</p>` : ""}
+      </div>
+      ${actions ? html`<div class="head-actions">${actions}</div>` : ""}
+    </div>
+  `;
+}
+
+// Run `fn` once the busy state has had a chance to reach the screen.
+//
+// Consolidate and the Excel export are synchronous and block the main thread for their whole
+// run, so calling them straight after a re-render means the spinner is never painted. A frame
+// of delay fixes that. Deliberately setTimeout rather than requestAnimationFrame: rAF does not
+// fire at all while the tab is hidden, which would leave the button stuck on "Consolidating…"
+// forever for anyone who switched away — caught exactly that way while testing.
+export function afterPaint(fn) {
+  setTimeout(fn, 16);
+}
+
+// A button that shows it is working. Long operations (consolidate, export, import) otherwise
+// look like nothing happened, which invites a second click on an action that is already
+// running.
+export function busyButton({ label, busyLabel, busy, onClick, kind = "btn", disabled = false }) {
+  return html`
+    <button
+      class="${kind} ${busy ? "is-busy" : ""}"
+      type="button"
+      ?disabled=${busy || disabled}
+      @click=${onClick}
+    >
+      ${busy ? html`<span class="spinner"></span>${busyLabel || label}` : label}
+    </button>
+  `;
 }

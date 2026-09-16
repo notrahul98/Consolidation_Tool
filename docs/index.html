@@ -10,9 +10,10 @@
   <header class="topbar">
     <div class="topbar-inner">
       <a class="brand" href="#/">Tally Consolidation Tool</a>
-      <nav class="nav" id="nav-links">
-        <a href="#/">Dashboard</a>
-      </nav>
+      <!-- Filled by layout.js updateNav(). Left empty: lit-html renders alongside a
+           container's existing children rather than replacing them, so a placeholder link
+           here would survive as a duplicate. -->
+      <nav class="nav" id="nav-links"></nav>
       <span class="period-badge" id="period-badge" style="display:none"></span>
       <div id="backup-controls"></div>
     </div>

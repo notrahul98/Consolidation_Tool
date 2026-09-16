@@ -4,7 +4,7 @@ import * as entityRepo from "../db/entity-repo.js";
 import * as groupCoaRepo from "../db/group-coa-repo.js";
 import * as consolidatedRepo from "../db/consolidated-repo.js";
 import { consolidatePeriod } from "../engines/consolidation.js";
-import { updateNav } from "../layout.js";
+import { afterPaint, busyButton, pageHead, setPageWidth, updateNav } from "../layout.js";
 import { router } from "../router.js";
 
 function idr(value) {
@@ -48,12 +48,19 @@ export async function renderConsolidatedTb(mountEl, { period: periodStr }) {
     return;
   }
 
+  setPageWidth("wide");
   const entities = entityRepo.listAll();
   let rows = buildRows(period.period_id, entities);
   let flash = null;
+  let busy = false;
 
-  const onRecalculate = (ev) => {
-    ev.preventDefault();
+  const onRecalculate = () => {
+    busy = true;
+    view();
+    afterPaint(runRecalculate);
+  };
+
+  const runRecalculate = () => {
     const result = consolidatePeriod(period.period_id);
     if (result.blocked) {
       if (result.reason === "locked") {
@@ -66,28 +73,31 @@ export async function renderConsolidatedTb(mountEl, { period: periodStr }) {
       flash = { kind: "success", message: `Consolidated: ${result.rowsWritten} rows written` };
     }
     rows = buildRows(period.period_id, entities);
+    busy = false;
     view();
   };
 
   const view = () =>
     render(
       html`
-        <h1>Consolidated Trial Balance</h1>
-        <p class="subtitle">
-          Raw Dr-positive signed balances (matches Conso_TB_Matrix in the Excel pack), not statement-display sign.
-          Entity columns already include adjustments booked against that entity; the Adjustments column holds only
-          group-level ones, so every row reads across as entities + adjustments = total.
-        </p>
+        ${pageHead({
+          title: "Consolidated Trial Balance",
+          subtitle: `Raw Dr-positive signed balances (matches Conso_TB_Matrix in the Excel pack), not statement-display
+            sign. Entity columns already include adjustments booked against that entity; the Adjustments column holds
+            only group-level ones, so every row reads across as entities + adjustments = total.`,
+          actions: busyButton({
+            label: "Recalculate",
+            busyLabel: "Consolidating…",
+            busy,
+            onClick: onRecalculate,
+          }),
+        })}
 
         ${flash ? html`<div class="flash flash-${flash.kind}">${flash.message}</div>` : ""}
 
-        <form style="margin-bottom:16px" @submit=${onRecalculate}>
-          <button class="btn" type="submit">Recalculate</button>
-        </form>
-
         <div class="card">
-          <div class="table-wrap">
-            <table>
+          <div class="table-wrap sticky-wrap">
+            <table class="compact conso">
               <thead>
                 <tr>
                   <th>Code</th>

@@ -2,7 +2,7 @@ import { html, render } from "../../vendor/lit-html.js";
 import * as periodRepo from "../db/period-repo.js";
 import * as comparative from "../engines/comparative.js";
 import { computePl, computeBs } from "../engines/statements.js";
-import { updateNav } from "../layout.js";
+import { pageHead, setPageWidth, updateNav } from "../layout.js";
 import { router } from "../router.js";
 
 const MONTH_ABBR = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -36,15 +36,11 @@ function monthLabel(key) {
 function renderStatement(mountEl, periodStr, title, lines, showPercent, onComparative) {
   render(
     html`
-      <div class="page-head">
-        <div>
-          <h1>${title}</h1>
-          <p class="subtitle">${periodStr}</p>
-        </div>
-        <div class="head-actions">
-          <button class="btn" @click=${onComparative}>Comparative view</button>
-        </div>
-      </div>
+      ${pageHead({
+        title,
+        subtitle: periodStr,
+        actions: html`<button class="btn" @click=${onComparative}>Comparative view</button>`,
+      })}
 
       <div class="card">
         <div class="table-wrap">
@@ -133,24 +129,20 @@ function renderComparative(mountEl, periodStr, statement, title, result, showPer
 
   render(
     html`
-      <div class="page-head">
-        <div>
-          <h1>${title}</h1>
-          <p class="subtitle">
-            period ended ${lastDay} ${MONTH_ABBR[ctx.anchorMonth]} ${ctx.anchorYear}${hiddenMonths
-              ? ` · ${hiddenMonths} month${hiddenMonths === 1 ? "" : "s"} with no data in either year hidden`
-              : ""}
-          </p>
-        </div>
-        <div class="head-actions">
+      ${pageHead({
+        title,
+        subtitle: `period ended ${lastDay} ${MONTH_ABBR[ctx.anchorMonth]} ${ctx.anchorYear}${
+          hiddenMonths ? ` · ${hiddenMonths} month${hiddenMonths === 1 ? "" : "s"} with no data in either year hidden` : ""
+        }`,
+        actions: html`
           ${hiddenMonths
             ? html`<button class="btn btn-secondary" @click=${() => setState({ months: "all" })}>Show all 12 months</button>`
             : state.months === "all"
             ? html`<button class="btn btn-secondary" @click=${() => setState({ months: "present" })}>Hide empty months</button>`
             : ""}
           <button class="btn" @click=${() => setState({ view: "simple" })}>Single period view</button>
-        </div>
-      </div>
+        `,
+      })}
 
       ${ctx.missing.length
         ? html`<div class="flash flash-warn">
@@ -229,6 +221,8 @@ function statementPage(statement, title, showPercent, computeSingle, computeComp
 
     const draw = () => {
       const state = viewState[statement];
+      // 26 columns of figures need the room; the single-period view does not.
+      setPageWidth(state.view === "simple" ? "default" : "wide");
       if (state.view === "simple") {
         const { lines } = computeSingle(period.period_id);
         renderStatement(mountEl, periodStr, title, lines, showPercent, () => {

@@ -1,4 +1,7 @@
 :root {
+  /* Statement and matrix pages switch this to 1400px via body.page-wide, so the topbar and
+     the content below it always share one width. */
+  --page-max: 1200px;
   --page: #EEF0EC;
   --surface: #FBFBF9;
   --surface-2: #F3F4F0;
@@ -31,21 +34,61 @@ body {
 .num { font-family: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace; font-variant-numeric: tabular-nums; }
 .neg { color: var(--negative); }
 
-.topbar { background: var(--surface); border-bottom: 1px solid var(--line); }
+body.page-wide { --page-max: 1400px; }
+
+.topbar { background: var(--surface); border-bottom: 1px solid var(--line); position: relative; z-index: 50; }
 .topbar-inner {
-  max-width: 1200px; margin: 0 auto; padding: 12px 20px;
+  max-width: var(--page-max); margin: 0 auto; padding: 12px 20px;
   display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
 }
 .brand { font-weight: 700; color: var(--accent-ink); text-decoration: none; font-size: 15px; }
-.nav { display: flex; gap: 14px; flex-wrap: wrap; flex: 1; }
-.nav a { color: var(--ink-2); text-decoration: none; font-size: 13px; padding: 4px 0; }
-.nav a:hover { color: var(--accent-ink); border-bottom: 2px solid var(--accent); }
+
+/* Grouped navigation. Eleven flat links had outgrown the topbar; the groups are <details> so
+   keyboard support and toggling come for free, with JS only for dismissing them.
+   Deliberately selects any direct <a> child of .nav as well, so the Python web app's flat
+   Jinja nav — which the UI refresh does not touch — stays styled off this same stylesheet
+   instead of the two copies drifting apart. */
+.nav { display: flex; gap: 2px; flex-wrap: wrap; flex: 1; align-items: center; }
+.nav > a, .nav-group > summary {
+  color: var(--ink-2); text-decoration: none; font-size: 13px; padding: 6px 10px;
+  border-radius: 7px; cursor: pointer; white-space: nowrap; display: inline-flex;
+  align-items: center; gap: 5px; user-select: none;
+}
+.nav > a:hover, .nav-group > summary:hover { color: var(--accent-ink); background: var(--surface-2); }
+.nav > a.is-active, .nav-group.is-active > summary { color: var(--accent-ink); font-weight: 600; background: var(--accent-wash); }
+
+.nav-group { position: relative; }
+/* Suppress the native disclosure triangle in favour of the caret in the markup. */
+.nav-group > summary { list-style: none; }
+.nav-group > summary::-webkit-details-marker { display: none; }
+.nav-group > summary::marker { content: ""; }
+.nav-group .caret { font-size: 9px; color: var(--muted); }
+.nav-group[open] > summary { background: var(--surface-2); color: var(--accent-ink); }
+
+/* Hidden explicitly rather than relying on <details>: the browser hides a closed details'
+   content through its shadow slot, which an absolutely positioned child with its own
+   `display` escapes — the panels rendered open on every group until this was pinned to
+   [open]. */
+.nav-menu { display: none; }
+.nav-group[open] > .nav-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 60;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 9px;
+  box-shadow: var(--shadow); padding: 6px; min-width: 200px;
+  display: flex; flex-direction: column; gap: 1px;
+}
+.nav-menu a {
+  color: var(--ink); text-decoration: none; font-size: 13px; padding: 7px 10px; border-radius: 6px;
+  white-space: nowrap;
+}
+.nav-menu a:hover { background: var(--surface-2); }
+.nav-menu a.is-active { background: var(--accent-wash); color: var(--accent-ink); font-weight: 600; }
+
 .period-badge {
   font-size: 12px; color: var(--accent-ink); background: var(--accent-wash);
   border-radius: 999px; padding: 4px 12px; font-weight: 600; white-space: nowrap;
 }
 
-.page { max-width: 1200px; margin: 0 auto; padding: 24px 20px 60px; }
+.page { max-width: var(--page-max); margin: 0 auto; padding: 24px 20px 60px; }
 
 h1 { font-size: 22px; margin: 0 0 4px; }
 h2 { font-size: 16px; margin: 0 0 12px; }
@@ -62,10 +105,72 @@ h2 { font-size: 16px; margin: 0 0 12px; }
   padding: 18px 20px; box-shadow: var(--shadow); margin-bottom: 20px;
 }
 
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-bottom: 20px; }
 .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; box-shadow: var(--shadow); }
 .kpi .label { font-size: 12px; color: var(--ink-2); margin: 0 0 8px; }
 .kpi .value { font-size: 20px; font-weight: 600; margin: 0; }
+
+/* The big number is the selected month; the comparatives sit under it so a card answers
+   "how was this month, and how is the year going" without a second screen. */
+.kpi-compare { margin: 12px 0 0; padding: 10px 0 0; border-top: 1px solid var(--line); display: grid; gap: 4px; }
+.kpi-compare > div { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.kpi-compare dt { font-size: 11.5px; color: var(--muted); margin: 0; }
+.kpi-compare dd { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.kpi-footnote { margin: -8px 0 20px; }
+
+/* --- Dashboard -------------------------------------------------------------------------- */
+.status-strip { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.chip {
+  display: inline-flex; align-items: baseline; gap: 8px; font-size: 12px;
+  border-radius: 999px; padding: 6px 14px; border: 1px solid transparent;
+}
+.chip span { color: var(--ink-2); }
+.chip strong { font-weight: 600; }
+.chip-good { background: var(--good-wash); border-color: rgba(12,163,12,0.2); }
+.chip-good strong { color: var(--good); }
+.chip-warn { background: var(--warn-wash); border-color: rgba(184,134,11,0.22); }
+.chip-warn strong { color: var(--warn); }
+.chip-bad { background: var(--negative-wash); border-color: rgba(208,59,59,0.22); }
+.chip-bad strong { color: var(--negative); }
+
+.period-select { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.period-select select { width: auto; min-width: 150px; }
+.period-create { display: flex; gap: 6px; align-items: center; }
+.period-create input { width: 110px; }
+
+.dash-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .dash-columns { grid-template-columns: 1fr; } }
+
+.checklist { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+.checklist-item { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.checklist-item:last-child { border-bottom: none; }
+.checklist-item a { color: var(--ink); text-decoration: none; font-size: 13.5px; font-weight: 600; }
+.checklist-item a:hover { color: var(--accent); text-decoration: underline; }
+.checklist-note { margin: 2px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.checklist-mark {
+  flex: 0 0 20px; height: 20px; border-radius: 50%; display: inline-flex;
+  align-items: center; justify-content: center; font-size: 11px; font-weight: 700; margin-top: 1px;
+}
+.is-done .checklist-mark { background: var(--good-wash); color: var(--good); }
+.is-warn .checklist-mark { background: var(--warn-wash); color: var(--warn); }
+.is-todo .checklist-mark { background: var(--surface-2); border: 1px dashed var(--border); }
+.is-todo a { color: var(--ink-2); }
+
+.action-panel { display: flex; gap: 10px; flex-wrap: wrap; }
+.action-note { margin: 10px 0 0; }
+.action-subhead { margin-top: 20px; }
+
+/* --- Import TB -------------------------------------------------------------------------- */
+/* A file input styled as a button: the <input> is hidden and its <label> carries the button
+   look, which keeps the native file picker and its keyboard behaviour. */
+.file-input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.file-btn { display: inline-block; margin: 0; }
+.file-btn.is-disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+.spinner-dark { border-color: rgba(20,24,27,0.2); border-top-color: var(--ink-2); margin-right: 5px; }
+.row-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.row-warnings { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--ink-2); }
+.tally-row td { background: var(--surface-2); }
+code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 
 table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 th { text-align: left; font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
@@ -75,6 +180,25 @@ td { padding: 8px 14px; border-bottom: 1px solid var(--line); }
 tr.subtotal td { font-weight: 600; border-top: 1px solid var(--ink-2); }
 tr.section td { font-weight: 700; text-transform: uppercase; font-size: 12px; color: var(--accent-ink); background: var(--accent-wash); }
 .table-wrap { overflow-x: auto; }
+
+/* Mapping and Consolidated TB are long lists read by scanning, so they default to this.
+   Statements stay at the roomier default — there are far fewer rows and they are read
+   line by line. */
+table.compact th { padding: 6px 10px; }
+table.compact td { padding: 5px 10px; font-size: 13px; }
+
+/* Long tables scroll inside the card so the header row and the identifying columns stay put.
+   Sticky cells need an opaque background of their own or the rows show through them. */
+.sticky-wrap { max-height: 76vh; overflow: auto; }
+table.conso thead th { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+table.conso th:nth-child(1), table.conso td:nth-child(1),
+table.conso th:nth-child(2), table.conso td:nth-child(2) {
+  position: sticky; background: var(--surface); z-index: 1;
+}
+table.conso th:nth-child(1), table.conso td:nth-child(1) { left: 0; width: 78px; min-width: 78px; }
+table.conso th:nth-child(2), table.conso td:nth-child(2) { left: 78px; min-width: 240px; box-shadow: 1px 0 0 var(--line); }
+table.conso thead th:nth-child(1), table.conso thead th:nth-child(2) { z-index: 3; }
+table.conso tr.section td:nth-child(1), table.conso tr.section td:nth-child(2) { background: var(--accent-wash); }
 
 .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
 .badge-pass { background: var(--good-wash); color: var(--good); }
@@ -94,6 +218,18 @@ tr.section td { font-weight: 700; text-transform: uppercase; font-size: 12px; co
 .btn-secondary { background: var(--surface-2); color: var(--ink); border: 1px solid var(--border); }
 .btn-danger { background: var(--negative); }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Consolidate, export and import all take long enough to look like nothing happened, which
+   invites a second click on an action already running. */
+.btn.is-busy { opacity: 0.8; cursor: progress; }
+.spinner {
+  display: inline-block; width: 12px; height: 12px; margin-right: 7px; vertical-align: -2px;
+  border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+.btn-secondary .spinner { border-color: rgba(20,24,27,0.2); border-top-color: var(--ink); }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 form.inline { display: inline; }
 
