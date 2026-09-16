@@ -27,6 +27,59 @@ export function asStr(periodRow) {
   return `${periodRow.year}-${String(periodRow.month).padStart(2, "0")}`;
 }
 
+export function getByYearMonth(year, month) {
+  return persistence.get("SELECT * FROM periods WHERE year = ? AND month = ?", [year, month]);
+}
+
+// Periods that exist within one calendar year's month span, chronologically.
+//
+// Returns only what has actually been imported — a range of Jan..Aug on a database holding
+// May..Aug returns four rows, not eight. Callers that need to know which months are absent
+// ask comparativeReadiness; conflating "no row" with "zero" is the whole trap here.
+export function listInRange(year, monthFrom, monthTo) {
+  return persistence.all("SELECT * FROM periods WHERE year = ? AND month BETWEEN ? AND ? ORDER BY month", [
+    year,
+    monthFrom,
+    monthTo,
+  ]);
+}
+
+// What a comparative range can and cannot show, for the warning banners.
+//
+// Takes [year, month] pairs rather than periodIds — the most important thing to report is the
+// months that have no period row at all, and those have no id to pass in.
+//
+// - missing: no period row, or a period row with nothing in consolidated_tb. Either way the
+//   column has no figures; it contributes zero to a YTD sum and must display as "—".
+// - open: present but not locked. Figures can still move. Warn, never block.
+// - stale: consolidated, but an adjustment has changed since. The numbers shown are not what
+//   a re-consolidate would produce.
+export function comparativeReadiness(months) {
+  const missing = [];
+  const open = [];
+  const stale = [];
+
+  for (const [year, month] of months) {
+    const label = `${year}-${String(month).padStart(2, "0")}`;
+    const period = getByYearMonth(year, month);
+    if (!period) {
+      missing.push(label);
+      continue;
+    }
+    const hasData = persistence.get("SELECT 1 AS present FROM consolidated_tb WHERE period_id = ? LIMIT 1", [
+      period.period_id,
+    ]);
+    if (!hasData) {
+      missing.push(label);
+      continue;
+    }
+    if (period.status !== "locked") open.push(label);
+    if (isConsolidationStale(period.period_id)) stale.push(label);
+  }
+
+  return { missing, open, stale };
+}
+
 // The chronologically preceding period, if one has been imported.
 export function getPrior(periodId) {
   const current = persistence.get("SELECT * FROM periods WHERE period_id = ?", [periodId]);

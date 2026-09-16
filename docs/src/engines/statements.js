@@ -10,10 +10,19 @@
 // Retained Earnings on the BS face is a single line combining the brought-forward P&L
 // ledger balance *and* the current period's P&L result — not two separate BS lines,
 // replicating the real template's Schedule 15.
+//
+// One column per call. Multi-column comparatives live in comparative.js, which reuses the
+// *FromTotals builders below rather than restating this layout — that is the only reason
+// they are split out from computePl / computeBs.
 import { persistence } from "../db/persistence.js";
 
 // account_name -> [Dr-positive signed closing balance, normal_balance]
-function totalsByAccountName(periodId) {
+//
+// Exported because the comparative engine sums these leaf totals across months and feeds the
+// result back into computePlFromTotals / computeBsFromTotals. That is the only supported way
+// to build a multi-month column: subtotals must be recomputed by the same formulas below,
+// never summed across months.
+export function totalsForPeriod(periodId) {
   const rows = persistence.all(
     `SELECT gc.account_name, gc.normal_balance,
             SUM(ctb.closing_dr) AS dr, SUM(ctb.closing_cr) AS cr
@@ -44,7 +53,13 @@ function buildLeaf(totals) {
 }
 
 export function computePl(periodId) {
-  const totals = totalsByAccountName(periodId);
+  return computePlFromTotals(totalsForPeriod(periodId));
+}
+
+// The P&L structure itself, over any set of leaf totals — one period's or several summed.
+// Split out from computePl so a YTD column is the *same* statement over summed leaves,
+// rather than a second copy of this layout that would drift from it.
+export function computePlFromTotals(totals) {
   const leaf = buildLeaf(totals);
   const lines = [];
   const netSalesHolder = [1.0]; // filled in once Net Sales is known; guards divide-by-zero until then
@@ -149,11 +164,25 @@ export function computePl(periodId) {
 }
 
 export function computeBs(periodId) {
-  const totals = totalsByAccountName(periodId);
+  return computeBsFromTotals(totalsForPeriod(periodId));
+}
+
+// The Balance Sheet structure over ONE month-end's leaf totals.
+//
+// Unlike the P&L, this must not be handed leaf totals summed across months: the balance sheet
+// is a point-in-time position. A comparative BS column is just this function on that month's
+// own period.
+//
+// Nor does the Retained Earnings face line take a YTD P&L. Measured on the real 2026 data:
+// the RE ledger closing already accumulates the earlier months of the same year (RE_bf for
+// August equals July's RE face line exactly), so pairing it with this month's P&L gives
+// Check = 0, while pairing it with YTD profit breaks Check by the accumulated amount
+// (3.7bn at June, 1.2bn at August). Month-only is correct here.
+export function computeBsFromTotals(totals) {
   const leaf = buildLeaf(totals);
   const lines = [];
 
-  const { netIncome: currentYearPl } = computePl(periodId);
+  const { netIncome: currentYearPl } = computePlFromTotals(totals);
 
   // BS convention (unlike the P&L's): line items first, subtotal last.
   function group(header, members) {
