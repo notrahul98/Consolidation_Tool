@@ -47,24 +47,49 @@ function activeSuffix(periodStr) {
   return path.startsWith(prefix) ? path.slice(prefix.length) : null;
 }
 
-function closeAllMenus() {
-  for (const el of document.querySelectorAll("details.nav-group[open]")) el.open = false;
+function closeAllMenus(except = null) {
+  for (const el of document.querySelectorAll("details.nav-group[open]")) {
+    if (el !== except) el.open = false;
+  }
 }
 
 let menuDismissWired = false;
 
 // A <details> menu stays open until something closes it: it has no idea the pointer left, and
-// following a link inside it does not re-render the topbar. Wire the three ways out once.
+// following a link inside it does not re-render the topbar. Wire the ways out once.
+//
+// Only one menu may be open at a time. <details> knows nothing about its siblings, so opening
+// a second group left the first one open and the two panels overlapped — which is what you
+// see after clicking along the nav. Each click closes every group except the one clicked; the
+// browser then applies its own toggle to that one, so clicking an open group still shuts it.
 function wireMenuDismissal() {
   if (menuDismissWired) return;
   menuDismissWired = true;
+
   document.addEventListener("click", (ev) => {
-    if (!ev.target.closest("details.nav-group")) closeAllMenus();
+    const target = ev.target instanceof Element ? ev.target : null;
+    // A link inside a menu closes everything, its own group included: choosing the page you
+    // are already on fires no hashchange, so nothing else would close it.
+    if (target && target.closest(".nav-menu a")) {
+      closeAllMenus();
+      return;
+    }
+    closeAllMenus(target ? target.closest("details.nav-group") : null);
   });
+
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") closeAllMenus();
   });
-  window.addEventListener("hashchange", closeAllMenus);
+
+  // Tabbing out of an open menu leaves it hanging over the page with focus somewhere else.
+  // relatedTarget is where focus went — null when it left the window entirely, which is not a
+  // reason to close.
+  document.addEventListener("focusout", (ev) => {
+    const next = ev.relatedTarget;
+    if (next instanceof Element) closeAllMenus(next.closest("details.nav-group"));
+  });
+
+  window.addEventListener("hashchange", () => closeAllMenus());
 }
 
 export function updateNav(periodStr) {
