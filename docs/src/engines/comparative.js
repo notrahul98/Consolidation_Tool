@@ -25,6 +25,7 @@
 // loaded year usable: with only May–Aug present, YTD Aug shows the sum of those four months
 // and the banner says which months are absent.
 import { persistence } from "../db/persistence.js";
+import * as consolidatedRepo from "../db/consolidated-repo.js";
 import * as periodRepo from "../db/period-repo.js";
 import { computeBsFromTotals, computePlFromTotals, totalsForPeriod } from "./statements.js";
 
@@ -114,6 +115,37 @@ export function resolveComparativePeriods(periodId) {
     ]),
     readiness: periodRepo.comparativeReadiness(throughAnchor.map((m) => [year, m])),
   });
+}
+
+// The Consolidated TB laid out month by month: {context, columns, totalsByMonth}, where
+// totalsByMonth maps a month key to that month's {accountId -> total} map.
+//
+// Columns are the months of the year to date that actually have consolidated data — unlike the
+// Excel sheet there is no template shape to preserve here, so an empty column would be noise
+// rather than a placeholder.
+//
+// Values are the consolidated `total` bucket, which already carries entity balances plus both
+// entity-level and group-level adjustments. The per-entity and Adjustments breakdown stays on
+// the single-period view; spreading six columns across eight months would be unreadable, and
+// the breakdown is a question you ask about one month at a time.
+//
+// Deliberately no year-to-date column. These rows mix balance sheet and P&L accounts, and
+// summing a balance sheet account across months is meaningless — the P&L screens are where a
+// year-to-date figure belongs, because there the rows are all movements.
+export function consolidatedMatrix(periodId) {
+  const context = resolveComparativePeriods(periodId);
+  const columns = [];
+  const totalsByMonth = new Map();
+  for (const [year, month] of context.ytdRangeCurrent) {
+    const period = periodRepo.getByYearMonth(year, month);
+    if (!period) continue;
+    const { total } = consolidatedRepo.getBuckets(period.period_id);
+    if (!total || total.size === 0) continue;
+    const key = monthKey(year, month);
+    columns.push(key);
+    totalsByMonth.set(key, total);
+  }
+  return { context, columns, totalsByMonth };
 }
 
 // Leaf totals for one month, or null when that month has nothing consolidated.

@@ -32,7 +32,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from src.db.repositories import period_repo
+from src.db.repositories import consolidated_repo, period_repo
 from src.engines.statement_generator import (
     StatementLine,
     compute_bs_from_totals,
@@ -134,6 +134,39 @@ def resolve_comparative_periods(conn: sqlite3.Connection, period_id: int) -> Com
         month_pairs=month_pairs,
         readiness=period_repo.comparative_readiness(conn, ytd_range_current),
     )
+
+
+def consolidated_matrix(conn: sqlite3.Connection, period_id: int) -> tuple[ComparativeContext, list[str], dict]:
+    """The Consolidated TB laid out month by month: (context, column keys, {month: {account_id:
+    total}}).
+
+    Columns are the months of the year to date that actually have consolidated data — unlike
+    the Excel sheet there is no template shape to preserve here, so an empty column would be
+    noise rather than a placeholder.
+
+    Values are the consolidated `total` bucket, which already carries entity balances plus both
+    entity-level and group-level adjustments. The per-entity and Adjustments breakdown stays on
+    the single-period view; spreading six columns across eight months would be unreadable and
+    the breakdown is a question you ask about one month at a time.
+
+    Deliberately no year-to-date column. These rows mix balance sheet and P&L accounts, and
+    summing a balance sheet account across months is meaningless — the P&L screens are where
+    a year-to-date figure belongs, because there the rows are all movements.
+    """
+    context = resolve_comparative_periods(conn, period_id)
+    columns: list[str] = []
+    totals_by_month: dict[str, dict] = {}
+    for year, month in context.ytd_range_current:
+        period = period_repo.get_by_year_month(conn, year, month)
+        if period is None:
+            continue
+        _, _, total = consolidated_repo.get_buckets(conn, period["period_id"])
+        if not total:
+            continue
+        key = month_key(year, month)
+        columns.append(key)
+        totals_by_month[key] = total
+    return context, columns, totals_by_month
 
 
 def totals_for_month(conn: sqlite3.Connection, year: int, month: int) -> dict | None:

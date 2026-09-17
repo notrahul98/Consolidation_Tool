@@ -187,11 +187,21 @@ def test_simple_view_is_still_reachable(client):
     assert "Amount (IDR)" in bs.text
 
 
-def test_validation_page_shows_all_checks_passing(client):
+def test_validation_page_shows_every_check_and_no_errors(client):
+    """Twelve substantive checks pass; V21 and V22 warn because this fixture is a single open
+    month, which is a true statement about the comparative range, not a failure of the close.
+    No check is Error-severity, so the period can still be locked."""
     c, conn, period_id = client
     resp = c.get("/periods/2026-06/validation")
     assert resp.status_code == 200
-    assert resp.text.count("badge-pass") == 12
+
+    from src.engines.validation_engine import run_all
+
+    results = run_all(conn, period_id)
+    failing = [r for r in results if not r.passed]
+    assert sorted(r.check_id for r in failing) == ["V21", "V22"]
+    assert all(r.severity == "Warning" for r in failing)
+    assert resp.text.count("badge-pass") == len(results) - len(failing)
     assert "badge-fail" not in resp.text
 
 
@@ -213,3 +223,22 @@ def test_nav_badge_shows_period_status_on_every_page(client, path):
     resp = c.get(path)
     assert resp.status_code == 200
     assert "2026-06 &middot; open" in resp.text
+
+
+def test_consolidated_tb_offers_the_monthly_matrix(client):
+    import html
+
+    c, _conn, _period_id = client
+
+    single = c.get("/periods/2026-06/consolidated")
+    assert single.status_code == 200
+    assert "Monthly matrix" in single.text
+    assert "Recalculate" in single.text
+
+    matrix = html.unescape(c.get("/periods/2026-06/consolidated?view=matrix").text)
+    assert matrix.count("Jun'26") >= 1
+    assert "Single period" in matrix
+    # The per-entity breakdown belongs to the single-period view only.
+    assert "Adjustments</th>" not in matrix
+    # Jan-May were never imported, so the matrix says so rather than showing empty columns.
+    assert "2026-01" in matrix

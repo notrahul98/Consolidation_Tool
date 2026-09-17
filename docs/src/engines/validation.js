@@ -2,6 +2,7 @@
 import { persistence } from "../db/persistence.js";
 import { computePl, computeBs } from "./statements.js";
 import { run as reCheckRun } from "./re-check.js";
+import { resolveComparativePeriods } from "./comparative.js";
 
 const TOLERANCE_IDR = 1;
 const MATERIALITY_IDR = 0.0;
@@ -250,6 +251,39 @@ function v20ReMovementTiesToPriorProfit(periodId) {
   return result("V20", "Retained Earnings movement ties to prior period profit", "Warning", details.length === 0, details);
 }
 
+// The YTD range's missing / open / stale months, as the comparative screens report them.
+function comparativeReadiness(periodId) {
+  return resolveComparativePeriods(periodId).readiness;
+}
+
+// Every month of the year to date has consolidated data. Warning.
+//
+// The comparative screens already show this as a banner, but a banner is only seen by whoever
+// opens that page. Putting it in the validation list means it also reaches the Validation
+// sheet in the Excel pack, where a reviewer looks at the numbers rather than at the tool. A
+// partial year-to-date figure is not wrong, it just is not what its heading claims, so this
+// never blocks locking.
+function v21ComparativeRangeComplete(periodId) {
+  const missing = comparativeReadiness(periodId).missing;
+  const details = missing.map((m) => `No consolidated data for ${m}`);
+  if (details.length) {
+    details.push(`Year-to-date columns cover ${missing.length} fewer month(s) than the period implies`);
+  }
+  return result("V21", "Comparative range has data for every month to date", "Warning", details.length === 0, details);
+}
+
+// No open or stale periods inside the comparative range. Warning.
+//
+// An open month can still change and a stale one is showing figures a re-consolidate would
+// move, so a year-to-date column built over either is provisional. Reported together because
+// the reader's question is the same: can I rely on this total yet.
+function v22ComparativeRangeSettled(periodId) {
+  const readiness = comparativeReadiness(periodId);
+  const details = readiness.open.map((m) => `${m} is open (unlocked) - its figures can still change`);
+  for (const m of readiness.stale) details.push(`${m} has adjustments changed since its last consolidation`);
+  return result("V22", "Comparative range contains no open or stale periods", "Warning", details.length === 0, details);
+}
+
 export function runAll(periodId) {
   return [
     v1EntityGrandTotalTies(periodId),
@@ -264,5 +298,7 @@ export function runAll(periodId) {
     v18LockedPeriodImmutable(periodId),
     v19StockCogsBooked(periodId),
     v20ReMovementTiesToPriorProfit(periodId),
+    v21ComparativeRangeComplete(periodId),
+    v22ComparativeRangeSettled(periodId),
   ];
 }

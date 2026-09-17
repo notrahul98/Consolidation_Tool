@@ -294,3 +294,52 @@ def test_readiness_flags_stale_consolidation(two_periods):
 
 def test_fiscal_config_is_calendar_year():
     assert ce.fiscal_months() == list(range(1, 13))
+
+
+# --- consolidated monthly matrix ----------------------------------------------------------
+
+def test_matrix_has_one_column_per_month_with_data(two_periods):
+    conn, _may_id, june_id = two_periods
+    context, columns, totals = ce.consolidated_matrix(conn, june_id)
+
+    assert columns == ["2026-05", "2026-06"]
+    assert set(totals) == {"2026-05", "2026-06"}
+    # Jan-Apr have no period rows at all, so they get no column rather than an empty one.
+    assert context.missing == ["2026-01", "2026-02", "2026-03", "2026-04"]
+
+
+def test_matrix_values_are_the_consolidated_total_for_that_month(two_periods):
+    """Each cell must be the same figure the single-period view's Total column shows, which is
+    entity balances plus entity-level and group-level adjustments."""
+    from src.db.repositories import consolidated_repo
+
+    conn, may_id, june_id = two_periods
+    _context, _columns, totals = ce.consolidated_matrix(conn, june_id)
+
+    for key, period_id in (("2026-05", may_id), ("2026-06", june_id)):
+        _by_entity, _group_adj, total = consolidated_repo.get_buckets(conn, period_id)
+        assert totals[key] == total
+
+
+def test_matrix_stops_at_the_anchor_month(consolidated):
+    """June is the anchor; a July that exists must not appear in June's matrix."""
+    from src.db.repositories import period_repo
+    from src.engines.consolidation_engine import consolidate_period
+    from tests.conftest import import_all_entities
+
+    conn, june_id, _ = consolidated
+    july_id = import_all_entities(conn, "2026-07")
+    consolidate_period(conn, july_id)
+    conn.commit()
+    assert period_repo.get_by_year_month(conn, 2026, 7) is not None
+
+    _context, columns, _totals = ce.consolidated_matrix(conn, june_id)
+    assert columns == ["2026-06"]
+
+
+def test_matrix_carries_no_year_to_date_column(two_periods):
+    """These rows mix balance sheet and P&L accounts; summing a balance sheet account across
+    months would be meaningless, so the matrix deliberately offers no total."""
+    conn, _may_id, june_id = two_periods
+    _context, columns, _totals = ce.consolidated_matrix(conn, june_id)
+    assert not [c for c in columns if c.startswith("ytd")]

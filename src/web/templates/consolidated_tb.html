@@ -1,38 +1,93 @@
 {% extends "base.html" %}
 {% block title %}Consolidated TB{% endblock %}
 {% block content %}
-<h1>Consolidated Trial Balance</h1>
-<p class="subtitle">Raw Dr-positive signed balances (matches Conso_TB_Matrix in the Excel pack), not statement-display sign.
-Entity columns already include adjustments booked against that entity; the Adjustments column holds only group-level
-ones, so every row reads across as entities + adjustments = total.</p>
+<div class="page-head">
+  <div>
+    <h1>Consolidated Trial Balance</h1>
+    {% if view == 'matrix' %}
+      <p class="subtitle">
+        Each account's consolidated Total, month by month across the year to date. Balances are raw Dr-positive, not
+        statement-display sign. There is deliberately no year-to-date column — these rows mix balance sheet and P&amp;L
+        accounts, and summing a balance sheet account across months is meaningless.
+      </p>
+    {% else %}
+      <p class="subtitle">
+        Raw Dr-positive signed balances (matches Conso_TB_Matrix in the Excel pack), not statement-display sign.
+        Entity columns already include adjustments booked against that entity; the Adjustments column holds only
+        group-level ones, so every row reads across as entities + adjustments = total.
+      </p>
+    {% endif %}
+  </div>
+  <div class="head-actions">
+    {% if view == 'matrix' %}
+      <a class="btn btn-secondary" href="/periods/{{ period_str }}/consolidated">Single period</a>
+    {% else %}
+      <a class="btn btn-secondary" href="/periods/{{ period_str }}/consolidated?view=matrix">Monthly matrix</a>
+      <form method="post" action="/periods/{{ period_str }}/consolidated/recalculate" class="inline">
+        <button class="btn" type="submit">Recalculate</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
 
-<form method="post" action="/periods/{{ period_str }}/consolidated/recalculate" style="margin-bottom:16px">
-  <button class="btn" type="submit">Recalculate</button>
-</form>
+{% if view == 'matrix' and missing %}
+  <div class="flash flash-warn">
+    No consolidated data for <strong>{{ missing | join(', ') }}</strong> — those months have no column.
+  </div>
+{% endif %}
+{% if view == 'matrix' and open_in_range %}
+  <div class="flash flash-warn">
+    Open (unlocked) periods in range: <strong>{{ open_in_range | join(', ') }}</strong>. These figures can still change.
+  </div>
+{% endif %}
 
 <div class="card">
-  <div class="table-wrap">
-  <table>
-    <thead>
-      <tr>
-        <th>Code</th><th>Account</th>
-        {% for e in entities %}<th class="num-col">{{ e.entity_code }}</th>{% endfor %}
-        <th class="num-col">Adjustments</th>
-        <th class="num-col">Total</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in rows %}
-      <tr class="{{ 'section' if row.is_header }}">
-        <td class="num">{{ row.code }}</td>
-        <td>{{ row.name }}</td>
-        {% for v in row.entity_values %}<td class="num {{ 'neg' if v and v < 0 }}">{{ v | idr }}</td>{% endfor %}
-        <td class="num {{ 'neg' if row.adjustment and row.adjustment < 0 }}">{{ row.adjustment | idr }}</td>
-        <td class="num {{ 'neg' if row.total and row.total < 0 }}">{{ row.total | idr }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-wrap sticky-wrap">
+  {% if view == 'matrix' %}
+    <table class="compact conso">
+      <thead>
+        <tr>
+          <th>Code</th><th>Account</th>
+          {% for c in columns %}<th class="num-col">{{ c.label }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr class="{{ 'section' if row.is_header }}">
+          <td class="num">{{ row.code }}</td>
+          <td>{{ row.name }}</td>
+          {% for v in row.month_values %}
+            <td class="num {{ 'neg' if v and v < 0 }}">
+              {%- if v is none %}<span class="dash">&mdash;</span>{% else %}{{ v | idr }}{% endif -%}
+            </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <table class="compact conso">
+      <thead>
+        <tr>
+          <th>Code</th><th>Account</th>
+          {% for e in entities %}<th class="num-col">{{ e.entity_code }}</th>{% endfor %}
+          <th class="num-col">Adjustments</th>
+          <th class="num-col">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr class="{{ 'section' if row.is_header }}">
+          <td class="num">{{ row.code }}</td>
+          <td>{{ row.name }}</td>
+          {% for v in row.entity_values %}<td class="num {{ 'neg' if v and v < 0 }}">{{ v | idr }}</td>{% endfor %}
+          <td class="num {{ 'neg' if row.adjustment and row.adjustment < 0 }}">{{ row.adjustment | idr }}</td>
+          <td class="num {{ 'neg' if row.total and row.total < 0 }}">{{ row.total | idr }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
   </div>
 </div>
 {% endblock %}

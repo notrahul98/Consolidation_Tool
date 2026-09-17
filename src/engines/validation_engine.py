@@ -1,4 +1,5 @@
-"""Phase 1 validation subset: V1, V3, V5, V8, V9, V12 from the source plan's Section 6.7/10."""
+"""Validation checks V1-V22 from the source plan's Section 6.7/10, plus the comparative-range
+checks added with the YTD work."""
 
 import sqlite3
 from dataclasses import dataclass
@@ -263,6 +264,45 @@ def _v20_re_movement_ties_to_prior_profit(conn: sqlite3.Connection, period_id: i
     return ValidationResult("V20", "Retained Earnings movement ties to prior period profit", "Warning", not details, details)
 
 
+def _comparative_readiness(conn: sqlite3.Connection, period_id: int) -> dict:
+    """The YTD range's missing / open / stale months, as the comparative screens report them."""
+    from src.engines import comparative_engine
+
+    return comparative_engine.resolve_comparative_periods(conn, period_id).readiness
+
+
+def _v21_comparative_range_complete(conn: sqlite3.Connection, period_id: int) -> ValidationResult:
+    """Every month of the year to date has consolidated data. Severity Warning.
+
+    The comparative screens already show this as a banner, but a banner is only seen by
+    whoever opens that page. Putting it in the validation list means it also reaches the
+    Validation sheet in the Excel pack, where a reviewer looks at the numbers rather than at
+    the tool. A partial year-to-date figure is not wrong, it just is not what its heading
+    claims, so this never blocks locking.
+    """
+    missing = _comparative_readiness(conn, period_id)["missing"]
+    details = [f"No consolidated data for {m}" for m in missing]
+    if details:
+        details.append(
+            f"Year-to-date columns cover {len(missing)} fewer month(s) than the period implies")
+    return ValidationResult("V21", "Comparative range has data for every month to date", "Warning",
+                            not details, details)
+
+
+def _v22_comparative_range_settled(conn: sqlite3.Connection, period_id: int) -> ValidationResult:
+    """No open or stale periods inside the comparative range. Severity Warning.
+
+    An open month can still change and a stale one is showing figures a re-consolidate would
+    move, so a year-to-date column built over either is provisional. Reported together because
+    the reader's question is the same: can I rely on this total yet.
+    """
+    readiness = _comparative_readiness(conn, period_id)
+    details = [f"{m} is open (unlocked) - its figures can still change" for m in readiness["open"]]
+    details += [f"{m} has adjustments changed since its last consolidation" for m in readiness["stale"]]
+    return ValidationResult("V22", "Comparative range contains no open or stale periods", "Warning",
+                            not details, details)
+
+
 def run_all(conn: sqlite3.Connection, period_id: int) -> list[ValidationResult]:
     return [
         _v1_entity_grand_total_ties(conn, period_id),
@@ -277,4 +317,6 @@ def run_all(conn: sqlite3.Connection, period_id: int) -> list[ValidationResult]:
         _v18_locked_period_immutable(conn, period_id),
         _v19_stock_cogs_booked(conn, period_id),
         _v20_re_movement_ties_to_prior_profit(conn, period_id),
+        _v21_comparative_range_complete(conn, period_id),
+        _v22_comparative_range_settled(conn, period_id),
     ]

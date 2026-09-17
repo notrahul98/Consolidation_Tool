@@ -19,6 +19,10 @@ const FIX_TARGET = {
   "V18": ["/adjustments", "Apply draft adjustments"],
   "V19": ["/stock", "Open Stock / COGS"],
   "V20": ["/retained-earnings", "Open the RE movement check"],
+  "V21": ["/import", "Import the missing months"],
+  // "" is the dashboard route, where periods are locked — the link is keyed off the label, so
+  // an empty suffix still renders.
+  "V22": ["", "Lock periods on the dashboard"],
 };
 
 export async function renderValidation(mountEl, { period: periodStr }) {
@@ -59,7 +63,7 @@ export async function renderValidation(mountEl, { period: periodStr }) {
           </span>
           <span class="check-id num">${v.checkId}</span>
           <span class="check-desc">${v.description}</span>
-          ${!v.passed && suffix
+          ${!v.passed && label
             ? html`<a class="btn btn-secondary btn-sm" href="#/periods/${periodStr}${suffix}">${label}</a>`
             : ""}
         </div>

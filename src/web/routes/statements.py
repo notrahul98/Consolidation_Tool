@@ -81,10 +81,14 @@ def _comparative_context(conn, period_str, title, result, show_percent, months="
 
 
 @router.get("/periods/{period_str}/consolidated")
-def consolidated_tb(request: Request, period_str: str, conn: sqlite3.Connection = Depends(get_db)):
+def consolidated_tb(request: Request, period_str: str, view: str = "single",
+                    conn: sqlite3.Connection = Depends(get_db)):
     period = period_repo.get_by_str(conn, period_str)
     if period is None:
         return RedirectResponse(f"/?flash=No such period&flash_kind=error", status_code=303)
+
+    if view == "matrix":
+        return _consolidated_matrix(request, conn, period, period_str)
 
     entities = entity_repo.list_all(conn)
     coa_rows = group_coa_repo.list_all(conn)
@@ -108,6 +112,32 @@ def consolidated_tb(request: Request, period_str: str, conn: sqlite3.Connection 
 
     return templates.TemplateResponse(request, "consolidated_tb.html", {
         "request": request, "period_str": period_str, "entities": entities, "rows": rows,
+        "view": "single",
+    })
+
+
+def _consolidated_matrix(request, conn, period, period_str):
+    """The same accounts read across the year rather than across the entities: one column per
+    month of the year to date, each holding that month's consolidated Total."""
+    coa_rows = group_coa_repo.list_all(conn)
+    context, columns, totals_by_month = comparative_engine.consolidated_matrix(
+        conn, period["period_id"])
+
+    rows = []
+    for row in coa_rows:
+        # Deliberately not called "values": Jinja resolves row.values to the dict's own
+        # .values method before it looks for a key of that name, so the template silently
+        # iterates a builtin instead of the figures.
+        month_values = [totals_by_month[c].get(row["group_account_id"]) for c in columns]
+        if not any(v is not None for v in month_values):
+            continue
+        rows.append({"code": row["account_code"], "name": row["account_name"],
+                     "is_header": row["is_header"], "month_values": month_values})
+
+    return templates.TemplateResponse(request, "consolidated_tb.html", {
+        "request": request, "period_str": period_str, "view": "matrix", "rows": rows,
+        "columns": [{"key": c, "label": _month_label(c)} for c in columns],
+        "missing": context.missing, "open_in_range": context.open_in_range,
     })
 
 

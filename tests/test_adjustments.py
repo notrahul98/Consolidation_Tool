@@ -81,7 +81,10 @@ def test_reclassification_adjustment_moves_value_between_categories(consolidated
         before["Travel Expense - International"] + 97714092.0)
 
     results = run_all(conn, period_id)
-    failed = [r for r in results if not r.passed]
+    # V21/V22 compare the whole year to date. This fixture is one open month, so they report
+    # the eleven absent months and the unlocked period, correctly. Excluded by id rather than
+    # by severity, so a regression in any other Warning check still fails here.
+    failed = [r for r in results if not r.passed and r.check_id not in ("V21", "V22")]
     assert failed == [], f"Unexpected validation failures: {[(r.check_id, r.details) for r in failed]}"
 
 
@@ -183,7 +186,10 @@ def test_ic_elimination_pattern_nets_to_zero_across_entities(consolidated):
     assert bii_impact == pytest.approx(-18084500.0)
 
     results = run_all(conn, period_id)
-    failed = [r for r in results if not r.passed]
+    # V21/V22 compare the whole year to date. This fixture is one open month, so they report
+    # the eleven absent months and the unlocked period, correctly. Excluded by id rather than
+    # by severity, so a regression in any other Warning check still fails here.
+    failed = [r for r in results if not r.passed and r.check_id not in ("V21", "V22")]
     assert failed == [], f"Unexpected validation failures: {[(r.check_id, r.details) for r in failed]}"
 
 
