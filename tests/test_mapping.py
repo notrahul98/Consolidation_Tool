@@ -36,9 +36,12 @@ def test_import_mapping_workbook_round_trip(conn, tmp_path):
 
     wb = openpyxl.load_workbook(out_path)
     ws = wb["Mapping"]
+    # By header rather than by index: the columns have moved once already, and a hardcoded
+    # index silently writes into the wrong one rather than failing.
+    header = {c.value: c.column for c in ws[1]}
     for row in range(2, ws.max_row + 1):
-        if ws.cell(row=row, column=1).value == "Sales":
-            ws.cell(row=row, column=6, value="Sales")
+        if ws.cell(row=row, column=header["Ledger Name"]).value == "Sales":
+            ws.cell(row=row, column=header["Category"], value="Sales")
     wb.save(out_path)
 
     applied = import_mapping_workbook(conn, str(out_path), user="test")

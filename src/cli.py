@@ -76,9 +76,17 @@ def cmd_export_mapping(args: argparse.Namespace) -> None:
 def cmd_import_mapping(args: argparse.Namespace) -> None:
     from src.exporters.mapping_workbook import import_mapping_workbook
     conn = _connect()
-    n = import_mapping_workbook(conn, args.in_file, user=getpass.getuser())
+    period_id = None
+    if args.period:
+        period = period_repo.get_by_str(conn, args.period)
+        if not period:
+            sys.exit(f"No period '{args.period}' found.")
+        period_id = period["period_id"]
+    # --period is optional: the workbook carries the period it was exported for, and that is
+    # what decides which ledgers are split and therefore cannot take a single category.
+    n = import_mapping_workbook(conn, args.in_file, user=getpass.getuser(), period_id=period_id)
     conn.commit()
-    print(f"Applied categorization to {n} ledger(s).")
+    print(f"Applied categorization to {n} row(s).")
 
 
 def cmd_consolidate(args: argparse.Namespace) -> None:
@@ -302,6 +310,7 @@ def main() -> None:
 
     p = sub.add_parser("import-mapping", help="Re-import an edited categorization workbook")
     p.add_argument("--in", dest="in_file", required=True)
+    p.add_argument("--period", help="Override the period stamped in the workbook")
     p.set_defaults(func=cmd_import_mapping)
 
     p = sub.add_parser("consolidate", help="Roll up mapped entity TBs into the consolidated TB")
