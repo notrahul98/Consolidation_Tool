@@ -7,6 +7,14 @@ RE_closing is the post-adjustment closing on the `Retained Earnings` ledger cate
 (BS022) -- the brought-forward figure, *not* the BS face line (which compute_bs builds as
 RE_bf + current_year_pl). Using the face line would compare the number against itself.
 
+Every figure here is in the statements' DISPLAY convention: net profit is income-positive,
+and RE closing carries the same normal_balance sign flip the Balance Sheet applies, so it
+reads as the negative (deficit) the BS shows rather than the raw Dr-positive balance. Both
+sides of `RE_closing + net_profit` have to be in one convention or the gap comes out wrong by
+exactly twice the profit -- which is what it did, reporting a fictitious 1.4bn break on the
+real August data where the true gap is zero.
+
+
 Deliberately diagnostic rather than prescriptive: reports both months' RE closing, the
 movement, the prior month's profit, and the gap -- so the first run tells you whether the
 TBs update RE monthly or only at year end, instead of the tool assuming one and being wrong
@@ -20,6 +28,19 @@ from src.db.repositories import consolidated_repo, group_coa_repo, period_repo
 from src.engines.statement_generator import compute_pl
 
 RE_ACCOUNT_NAME = "Retained Earnings"
+
+
+def _display_sign(conn: sqlite3.Connection) -> float:
+    """+1 for a Dr-normal account, -1 for a Cr-normal one -- the same flip the statements
+    apply when turning a Dr-positive balance into a display figure.
+
+    Read from normal_balance rather than hardcoded, so this stays correct if Retained Earnings
+    is ever re-signed in the group chart of accounts.
+    """
+    account = group_coa_repo.get_by_name(conn, RE_ACCOUNT_NAME)
+    if account is None:
+        return 1.0
+    return 1.0 if account["normal_balance"] == "DR" else -1.0
 
 
 def _re_closing_group_total(conn: sqlite3.Connection, period_id: int) -> float:
@@ -39,7 +60,8 @@ def _re_closing_group_total(conn: sqlite3.Connection, period_id: int) -> float:
     account_id = account["group_account_id"]
     by_account_entity, group_adjustment, _ = consolidated_repo.get_buckets(conn, period_id)
     entity_sum = sum(v for (acct, _entity), v in by_account_entity.items() if acct == account_id)
-    return entity_sum + group_adjustment.get(account_id, 0.0)
+    dr_positive = entity_sum + group_adjustment.get(account_id, 0.0)
+    return dr_positive * _display_sign(conn)
 
 
 @dataclass
@@ -69,9 +91,11 @@ class RECheckResult:
 
 
 def _re_closing_by_entity(conn: sqlite3.Connection, period_id: int) -> dict[int, float]:
-    """entity_id -> post-adjustment closing balance on the Retained Earnings category.
+    """entity_id -> post-adjustment closing balance on the Retained Earnings category, in the
+    same display convention as _net_profit_by_entity below.
 
     Summed (not last-wins) across source_type IN ('entity_tb', 'adjustment') rows."""
+    sign = _display_sign(conn)
     rows = conn.execute(
         """SELECT ctb.entity_id, SUM(ctb.closing_dr) - SUM(ctb.closing_cr) AS balance
            FROM consolidated_tb ctb
@@ -81,7 +105,7 @@ def _re_closing_by_entity(conn: sqlite3.Connection, period_id: int) -> dict[int,
            GROUP BY ctb.entity_id""",
         (period_id, RE_ACCOUNT_NAME),
     ).fetchall()
-    return {r["entity_id"]: (r["balance"] or 0.0) for r in rows if r["entity_id"] is not None}
+    return {r["entity_id"]: (r["balance"] or 0.0) * sign for r in rows if r["entity_id"] is not None}
 
 
 def _net_profit_by_entity(conn: sqlite3.Connection, period_id: int) -> dict[int, float]:

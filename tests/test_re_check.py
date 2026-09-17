@@ -38,7 +38,8 @@ def test_gap_zero_on_synthetic_tying_data(conn):
     re_cat = group_coa_repo.get_by_name(conn, "Retained Earnings")
     sales_cat = group_coa_repo.get_by_name(conn, "Sales")
 
-    # Prior period: RE closing (raw signed) = -1000, Sales (raw signed) = -500 -> income +500
+    # Prior period: RE closing credit 1000 (raw signed -1000, display +1000), and Sales
+    # credit 500 (raw signed -500) -> income-positive profit of +500.
     consolidated_repo.insert_row(conn, prior_id, re_cat["group_account_id"], entity["entity_id"],
                                   0, 0, 0, 1000, 0, 1000, source_type="entity_tb")
     consolidated_repo.insert_row(conn, prior_id, sales_cat["group_account_id"], entity["entity_id"],
@@ -46,9 +47,15 @@ def test_gap_zero_on_synthetic_tying_data(conn):
     consolidated_repo.insert_row(conn, prior_id, sales_cat["group_account_id"], None,
                                   0, 0, 0, 500, 0, 500, source_type="total")
 
-    # Current period: RE closing (raw signed) must equal prior (-1000) + profit (500) = -500
+    # Current period: a profit of 500 INCREASES retained earnings, so RE must roll forward to
+    # a credit of 1500 (raw signed -1500, display +1500).
+    #
+    # This fixture used to say 500, which is prior (-1000) plus profit (+500) with the two
+    # sides in opposite conventions — the bug this check had. It made the test agree with the
+    # code while both disagreed with the accounting, and the neighbouring test's own comment
+    # ("instead of rolling forward to -1500") said so.
     consolidated_repo.insert_row(conn, current_id, re_cat["group_account_id"], entity["entity_id"],
-                                  0, 0, 0, 500, 0, 500, source_type="entity_tb")
+                                  0, 0, 0, 1500, 0, 1500, source_type="entity_tb")
     conn.commit()
 
     result = re_check.run(conn, current_id)
@@ -294,7 +301,66 @@ def test_group_row_includes_group_level_re_adjustments(consolidated):
     group_after = next(r for r in after.rows if r.entity_code is None).re_closing_current
     entity_after = sum(r.re_closing_current for r in after.rows if r.entity_code is not None)
 
-    assert group_after - group_before == pytest.approx(amount, abs=1), \
+    # Debiting a Cr-normal account reduces it, and these figures are in the statements'
+    # display convention, so the movement is -amount.
+    assert group_after - group_before == pytest.approx(-amount, abs=1), \
         "group row must move by the group-level RE adjustment"
-    assert group_after - entity_after == pytest.approx(amount, abs=1), \
+    assert group_after - entity_after == pytest.approx(-amount, abs=1), \
         "entity rows cannot carry a group-level adjustment; the group row must add it on top"
+
+
+def test_a_prior_period_loss_reduces_retained_earnings(conn):
+    """The direction the whole check turns on. A loss must make retained earnings smaller.
+
+    The profit case alone cannot catch a sign inversion here: with RE and profit in opposite
+    conventions the arithmetic stays symmetric and a fixture built to the wrong formula still
+    passes. This one fixes the direction independently.
+    """
+    prior_id = _make_period(conn, "2026-05")
+    current_id = _make_period(conn, "2026-06")
+
+    entity = entity_repo.get_by_code(conn, "BII")
+    re_cat = group_coa_repo.get_by_name(conn, "Retained Earnings")
+    expense_cat = group_coa_repo.get_by_name(conn, "Rent Expense")
+
+    # Prior: RE credit 1000 (display +1000) and a rent expense debit of 300 -> loss of 300.
+    consolidated_repo.insert_row(conn, prior_id, re_cat["group_account_id"], entity["entity_id"],
+                                 0, 0, 0, 1000, 0, 1000, source_type="entity_tb")
+    consolidated_repo.insert_row(conn, prior_id, expense_cat["group_account_id"], entity["entity_id"],
+                                 0, 0, 300, 0, 300, 0, source_type="entity_tb")
+    consolidated_repo.insert_row(conn, prior_id, expense_cat["group_account_id"], None,
+                                 0, 0, 300, 0, 300, 0, source_type="total")
+
+    # Current: the loss leaves RE at a credit of 700, not 1300.
+    consolidated_repo.insert_row(conn, current_id, re_cat["group_account_id"], entity["entity_id"],
+                                 0, 0, 0, 700, 0, 700, source_type="entity_tb")
+    conn.commit()
+
+    group_row = next(r for r in re_check.run(conn, current_id).rows if r.entity_code is None)
+    assert group_row.prior_net_profit == pytest.approx(-300, abs=1), "a 300 expense is a 300 loss"
+    assert group_row.re_closing_prior == pytest.approx(1000, abs=1)
+    assert group_row.re_closing_current == pytest.approx(700, abs=1)
+    assert group_row.expected == pytest.approx(700, abs=1)
+    assert abs(group_row.gap) < 1
+
+
+def test_re_closing_is_reported_in_the_statements_sign_convention(two_periods):
+    """Pins RE closing to the same convention the Balance Sheet shows it in, on real data.
+
+    Both sides of `RE closing + net profit` have to agree, and net profit is income-positive
+    because it comes from compute_pl. Reporting RE as the raw Dr-positive balance instead made
+    the gap wrong by exactly twice the profit — a fictitious 1.4bn break on the real August
+    figures, where the true gap is zero.
+    """
+    from src.engines.statement_generator import totals_for_period
+
+    conn, _may_id, june_id = two_periods
+    group_row = next(r for r in re_check.run(conn, june_id).rows if r.entity_code is None)
+
+    signed, normal_balance = totals_for_period(conn, june_id)["Retained Earnings"]
+    statement_value = signed if normal_balance == "DR" else -signed
+
+    assert group_row.re_closing_current == pytest.approx(statement_value, abs=1)
+    # And the two sides really are comparable: expected is built from them without a flip.
+    assert group_row.expected == pytest.approx(
+        group_row.re_closing_prior + group_row.prior_net_profit, abs=1)

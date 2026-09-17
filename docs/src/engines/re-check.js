@@ -7,6 +7,13 @@
 // the brought-forward figure, *not* the BS face line (which computeBs builds as
 // RE_bf + current_year_pl). Using the face line would compare the number against itself.
 //
+// Every figure here is in the statements' DISPLAY convention: net profit is income-positive,
+// and RE closing carries the same normal_balance sign flip the Balance Sheet applies, so it
+// reads as the negative (deficit) the BS shows rather than the raw Dr-positive balance. Both
+// sides of `RE_closing + net_profit` have to be in one convention or the gap comes out wrong
+// by exactly twice the profit — which is what it did, reporting a fictitious 1.4bn break on
+// the real August data where the true gap is zero.
+//
 // Deliberately diagnostic rather than prescriptive — see the Python docstring for the full
 // rationale. Severity is always Warning; this check never blocks locking a period.
 import { persistence } from "../db/persistence.js";
@@ -17,6 +24,16 @@ import { computePl } from "./statements.js";
 import { codepointCompare } from "../utils.js";
 
 const RE_ACCOUNT_NAME = "Retained Earnings";
+
+// +1 for a Dr-normal account, -1 for a Cr-normal one — the same flip the statements apply
+// when turning a Dr-positive balance into a display figure. Read from normal_balance rather
+// than hardcoded, so this stays correct if Retained Earnings is ever re-signed in the group
+// chart of accounts.
+function displaySign() {
+  const account = groupCoaRepo.getByName(RE_ACCOUNT_NAME);
+  if (!account) return 1.0;
+  return account.normal_balance === "DR" ? 1.0 : -1.0;
+}
 
 // Post-adjustment Retained Earnings for the group: every entity's bucket PLUS group-level
 // adjustments.
@@ -35,7 +52,8 @@ function reClosingGroupTotal(periodId) {
   for (const [key, value] of byAccountEntity) {
     if (Number(key.split(":")[0]) === accountId) entitySum += value;
   }
-  return entitySum + (groupAdjustment.get(accountId) || 0.0);
+  const drPositive = entitySum + (groupAdjustment.get(accountId) || 0.0);
+  return drPositive * displaySign();
 }
 
 // One per entity, plus a group total row (entityCode = null).
@@ -56,9 +74,11 @@ export class RECheckRow {
   }
 }
 
-// entityId -> post-adjustment closing balance on the Retained Earnings category. Summed
-// (not last-wins) across source_type IN ('entity_tb', 'adjustment') rows.
+// entityId -> post-adjustment closing balance on the Retained Earnings category, in the same
+// display convention as netProfitByEntity below. Summed (not last-wins) across
+// source_type IN ('entity_tb', 'adjustment') rows.
 function reClosingByEntity(periodId) {
+  const sign = displaySign();
   const rows = persistence.all(
     `SELECT ctb.entity_id, SUM(ctb.closing_dr) - SUM(ctb.closing_cr) AS balance
        FROM consolidated_tb ctb
@@ -70,7 +90,7 @@ function reClosingByEntity(periodId) {
   );
   const map = new Map();
   for (const r of rows) {
-    if (r.entity_id !== null && r.entity_id !== undefined) map.set(r.entity_id, r.balance || 0.0);
+    if (r.entity_id !== null && r.entity_id !== undefined) map.set(r.entity_id, (r.balance || 0.0) * sign);
   }
   return map;
 }
