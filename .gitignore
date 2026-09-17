@@ -16,3 +16,6 @@ Adjustments.xlsx
 Mapping*.xlsx
 TB *.xlsx
 Kreasi Financials*.xlsx
+
+# Parity harness working files — a real consolidation database is client financial data
+docs/_parity/

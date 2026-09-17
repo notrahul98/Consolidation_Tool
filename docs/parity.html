@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Python / browser parity</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">Tally Consolidation Tool</a>
+      <nav class="nav"><span class="nav-link is-active">Parity check</span></nav>
+    </div>
+  </header>
+  <main class="page">
+    <div class="page-head">
+      <div>
+        <h1>Python / browser parity</h1>
+        <p class="subtitle">
+          Runs the browser engines over the same database the Python snapshot was built from,
+          and compares every number. Build the snapshot first with
+          <code>python scripts/parity_snapshot.py &lt;database&gt;</code>.
+        </p>
+      </div>
+    </div>
+    <div id="report"><p class="empty">Loading…</p></div>
+  </main>
+
+  <script src="vendor/sql-wasm.js"></script>
+  <script src="vendor/exceljs.min.js"></script>
+  <script type="module" src="src/dev/parity.js"></script>
+</body>
+</html>

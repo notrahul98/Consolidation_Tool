@@ -13,9 +13,9 @@ period locking.
 **Web dashboard**: everything above is also available as a full interactive web app —
 upload TB files, categorize ledgers, enter adjustments, lock periods — as an alternative to the
 CLI + Excel round-trip. Both interfaces call the exact same underlying engine, so use whichever
-you prefer; nothing is CLI-only or web-only. See "Web dashboard" below. MoM/YTD/YoY comparatives
-and IC-elimination auto-matching are not planned (IC elimination is deliberately manual — see
-"Recurring adjustment patterns").
+you prefer; nothing is CLI-only or web-only. See "Web dashboard" below. YTD, prior-year and
+month-by-month comparatives are built (Phase 8); IC-elimination auto-matching is not planned
+(IC elimination is deliberately manual — see "Recurring adjustment patterns").
 
 **Stock/COGS reconciliation and IC elimination are both handled as regular, user-entered
 adjustments** — not automated. Neither can be computed from the Tally TB alone (stock movement
@@ -63,7 +63,8 @@ python -m src.cli copy-adjustments --period 2026-07
 python -m src.cli consolidate --period 2026-06
 python -m src.cli export-pack --period 2026-06 --out "Consolidated Pack 2026-06.xlsx"
 
-# 5. Lock a period once all Error-severity validations pass (required before comparatives)
+# 5. Lock a period once all Error-severity validations pass. Comparatives do NOT require a
+#    locked period — they warn about open months rather than refusing to show them (V22).
 python -m src.cli lock-period --period 2026-06
 python -m src.cli unlock-period --period 2026-06   # admin override, logged
 ```
@@ -119,6 +120,30 @@ balances genuinely net against each other, eliminate them with one entry — sam
 
 This nets to zero in `Conso_TB_Total`'s Interco Balances line while each entity's own column
 still shows the adjustment individually, traceable via `Adj_Bridge`.
+
+## Python / browser parity check
+
+The tool is two implementations of the same logic — `src/` in Python and `docs/src/` in
+JavaScript — kept identical by hand. There is no JavaScript test runner and no Node here, so
+nothing else catches them drifting apart. That has already happened once in production: a
+mapping fix shipped to Python and silently not to the browser app.
+
+Run this after any engine or exporter change:
+
+```bash
+python scripts/parity_snapshot.py "data/consolidation.db"
+# then serve docs/ and open /parity.html
+```
+
+The script records what every Python engine produced; the page runs the JavaScript engines over
+the same database and compares statements, buckets, comparatives, the monthly matrix,
+validations, the RE check, and every cell of the Excel pack's statement sheets. Pack formulas
+are compared as text, not as evaluated numbers, because two workbooks can agree on today's
+figures while referencing different cells.
+
+`docs/_parity/` holds the snapshot and a copy of the database. It is gitignored — a real
+consolidation database is client financial data.
+
 
 ## Project layout
 
